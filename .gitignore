@@ -1,0 +1,31 @@
+node_modules
+.next
+out
+build
+dist
+*.tsbuildinfo
+next-env.d.ts
+
+# Runtime secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.remember/
+.idea/
+.vscode/
+.DS_Store
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Testing / coverage
+coverage
+.playwright
+test-results
+playwright-report
+.next
+tsconfig.tsbuildinfo
+
+.cache/

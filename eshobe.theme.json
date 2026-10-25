@@ -1,0 +1,319 @@
+{
+  "contractVersion": 1,
+  "key": "apex",
+  "name": "Apex",
+  "nameFa": "اپکس",
+  "siteTypes": [
+    "business"
+  ],
+  "locales": [
+    "fa",
+    "en"
+  ],
+  "previewUrl": null,
+  "proxiesApi": true,
+  "capabilities": {
+    "forms": true,
+    "commerce": false
+  },
+  "design": {
+    "primary": "#0a0a0a",
+    "accent": "#0069e0",
+    "background": "#ffffff",
+    "foreground": "#0a0a0a",
+    "radius": "md",
+    "lineHeight": 1.75
+  },
+  "deployment": {
+    "strategy": "registry_image",
+    "registryProvider": "ghcr",
+    "registryImageRepository": "ghcr.io/hamidnoshady/cms-corporation-theme",
+    "registryVisibility": "private"
+  },
+  "build": {
+    "buildPack": "dockerfile",
+    "baseDirectory": "/",
+    "dockerfileLocation": "Dockerfile",
+    "installCommand": null,
+    "buildCommand": null,
+    "startCommand": null,
+    "publishDirectory": null,
+    "port": 3000,
+    "healthCheckPath": "/api/health",
+    "isStatic": false
+  },
+  "env": [
+    {
+      "key": "BIZAMIZ_LEAD_WEBHOOK_URL",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "نشانی ثبت لید",
+      "help": "Approved Biza Miz POST /api/website/leads URL. No browser-facing token."
+    },
+    {
+      "key": "BIZAMIZ_LEAD_TOKEN",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "کلید ثبت لید",
+      "help": "Site-scoped website credential issued in Biza Miz, not an owner session or Eshobe key."
+    },
+    {
+      "key": "LEAD_FORM_SECRET",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "کلید حفاظت فرم",
+      "help": "Random signing secret for expiring form challenges; defaults to a namespaced Eshobe revalidation secret."
+    },
+    {
+      "key": "BIZAMIZ_CATALOGUE_URL",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "نشانی کاتالوگ تأییدشده",
+      "help": "Approved published feed matching docs/INTEGRATIONS.md. Never a private wallet/billing API."
+    },
+    {
+      "key": "BIZAMIZ_CATALOGUE_TOKEN",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "کلید خواندن کاتالوگ",
+      "help": "Optional least-privilege bearer credential for the approved published feed."
+    },
+    {
+      "key": "ESHOBE_PREVIEW_SECRET",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "کلید پیش‌نمایش ویرایشگر",
+      "help": "Must match CMS PREVIEW_SECRET for native /next/preview; editor membership is also verified."
+    },
+    {
+      "key": "PLAUSIBLE_DOMAIN",
+      "source": "tenant",
+      "required": false,
+      "secret": false,
+      "labelFa": "دامنهٔ آمار",
+      "help": "Runtime analytics domain. No build-time NEXT_PUBLIC setting."
+    },
+    {
+      "key": "PLAUSIBLE_EVENTS_URL",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "نشانی دریافت آمار",
+      "help": "Approved Plausible Events API URL; consent-gated server delivery without contact data."
+    },
+    {
+      "key": "BIZAMIZ_CONVERSION_SECRET",
+      "source": "tenant",
+      "required": false,
+      "secret": true,
+      "labelFa": "کلید رویدادهای تأییدشده",
+      "help": "Optional server callback HMAC key; see docs/INTEGRATIONS.md. Requires an emitter in Biza Miz."
+    },
+    {
+      "key": "APEX_TRUSTED_IP_HEADER",
+      "source": "tenant",
+      "required": false,
+      "secret": false,
+      "labelFa": "سرآیند قابل اعتماد نشانی کاربر",
+      "help": "Set only if the edge overwrites it and the origin is not publicly bypassable; otherwise shared limits apply."
+    },
+    {
+      "key": "APEX_NOINDEX",
+      "source": "tenant",
+      "required": false,
+      "secret": false,
+      "labelFa": "جلوگیری از ایندکس",
+      "help": "Set true for extra staging deployments. Eshobe preview origins are automatically noindex."
+    }
+  ],
+  "settings": {
+    "announcementEnabled": {
+      "type": "boolean",
+      "default": false,
+      "labelFa": "نمایش اطلاعیه",
+      "labelEn": "Show announcement"
+    },
+    "announcementTextFa": {
+      "type": "text",
+      "default": "",
+      "labelFa": "متن اطلاعیه (فارسی)",
+      "labelEn": "Announcement text (فارسی)"
+    },
+    "announcementTextEn": {
+      "type": "text",
+      "default": "",
+      "labelFa": "متن اطلاعیه (English)",
+      "labelEn": "Announcement text (English)"
+    },
+    "heroEyebrowFa": {
+      "type": "text",
+      "default": "",
+      "labelFa": "عنوان کوتاه صفحهٔ اصلی (فارسی)",
+      "labelEn": "Home eyebrow (فارسی)"
+    },
+    "heroEyebrowEn": {
+      "type": "text",
+      "default": "",
+      "labelFa": "عنوان کوتاه صفحهٔ اصلی (English)",
+      "labelEn": "Home eyebrow (English)"
+    },
+    "productCaptionFa": {
+      "type": "text",
+      "default": "",
+      "labelFa": "توضیح تصویر محصول (فارسی)",
+      "labelEn": "Product caption (فارسی)"
+    },
+    "productCaptionEn": {
+      "type": "text",
+      "default": "",
+      "labelFa": "توضیح تصویر محصول (English)",
+      "labelEn": "Product caption (English)"
+    },
+    "footerNoteFa": {
+      "type": "text",
+      "default": "",
+      "labelFa": "توضیح پاورقی (فارسی)",
+      "labelEn": "Footer note (فارسی)"
+    },
+    "footerNoteEn": {
+      "type": "text",
+      "default": "",
+      "labelFa": "توضیح پاورقی (English)",
+      "labelEn": "Footer note (English)"
+    },
+    "announcementHref": {
+      "type": "text",
+      "default": "",
+      "labelFa": "لینک اطلاعیه",
+      "labelEn": "Announcement URL"
+    },
+    "ctaPrimaryLabelFa": {
+      "type": "text",
+      "default": "شروع",
+      "labelFa": "دکمهٔ اصلی (فارسی)",
+      "labelEn": "Primary label (Persian)"
+    },
+    "ctaPrimaryLabelEn": {
+      "type": "text",
+      "default": "Get started",
+      "labelFa": "دکمهٔ اصلی (انگلیسی)",
+      "labelEn": "Primary label (English)"
+    },
+    "ctaPrimaryHref": {
+      "type": "text",
+      "default": "/demo",
+      "labelFa": "لینک دکمهٔ اصلی",
+      "labelEn": "Primary CTA URL"
+    },
+    "ownerSignupHref": {
+      "type": "text",
+      "default": "",
+      "labelFa": "ثبت‌نام مالک در سامانهٔ اصلی",
+      "labelEn": "Owner onboarding URL in the billing authority"
+    },
+    "consentVersion": {
+      "type": "text",
+      "default": "contact-v1",
+      "labelFa": "نسخهٔ رضایت تماس",
+      "labelEn": "Contact consent policy version"
+    },
+    "defaultTheme": {
+      "type": "select",
+      "default": "system",
+      "labelFa": "پوستهٔ رنگی",
+      "labelEn": "Default colour mode",
+      "options": [
+        {
+          "value": "light",
+          "labelFa": "روشن",
+          "labelEn": "Light"
+        },
+        {
+          "value": "dark",
+          "labelFa": "تاریک",
+          "labelEn": "Dark"
+        },
+        {
+          "value": "system",
+          "labelFa": "سیستم",
+          "labelEn": "System"
+        }
+      ]
+    },
+    "showFooterLocaleSwitcher": {
+      "type": "boolean",
+      "default": true,
+      "labelFa": "تغییر زبان در پاورقی",
+      "labelEn": "Footer locale switcher"
+    }
+  },
+  "contentSlots": [
+    {
+      "key": "home",
+      "type": "page",
+      "required": true,
+      "labelEn": "Home page",
+      "labelFa": "صفحهٔ اصلی",
+      "help": "CMS-owned localized content. Bind by stable ID; routes do not follow renamed slugs."
+    },
+    {
+      "key": "restaurants",
+      "type": "page",
+      "required": false,
+      "labelEn": "Restaurants & cafés landing",
+      "labelFa": "صفحهٔ رستوران و کافه",
+      "help": "CMS-owned localized content. Bind by stable ID; routes do not follow renamed slugs."
+    },
+    {
+      "key": "pricing",
+      "type": "page",
+      "required": false,
+      "labelEn": "Pricing page",
+      "labelFa": "صفحهٔ قیمت‌گذاری",
+      "help": "CMS-owned localized content. Bind by stable ID; routes do not follow renamed slugs."
+    },
+    {
+      "key": "features",
+      "type": "page",
+      "required": false,
+      "labelEn": "Features page",
+      "labelFa": "صفحهٔ ویژگی‌ها",
+      "help": "CMS-owned localized content. Bind by stable ID; routes do not follow renamed slugs."
+    },
+    {
+      "key": "demoForm",
+      "type": "form",
+      "required": false,
+      "labelEn": "Demo request form",
+      "labelFa": "فرم درخواست دمو",
+      "help": "CMS-owned localized content. Bind by stable ID; routes do not follow renamed slugs."
+    },
+    {
+      "key": "demo",
+      "type": "page",
+      "required": false,
+      "labelEn": "Demo/contact page",
+      "labelFa": "صفحهٔ درخواست دمو"
+    },
+    {
+      "key": "privacy",
+      "type": "page",
+      "required": false,
+      "labelEn": "Published privacy policy (required to enable live lead forms)",
+      "labelFa": "سیاست حریم خصوصی (برای فرم فعال الزامی است)"
+    },
+    {
+      "key": "productMedia",
+      "type": "media",
+      "required": false,
+      "labelEn": "Approved product capture",
+      "labelFa": "تصویر تأییدشدهٔ محصول"
+    }
+  ]
+}
