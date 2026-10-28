@@ -1,0 +1,45 @@
+{
+  "name": "@eshobe/site-runtime",
+  "version": "0.1.0",
+  "description": "Shared headless runtime for Eshobe CMS \u2014 Persian-first format/money/theme/blocks",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./format": {
+      "types": "./lib/format.d.ts",
+      "import": "./lib/format.js"
+    },
+    "./money": {
+      "types": "./lib/money.d.ts",
+      "import": "./lib/money.js"
+    },
+    "./theme": {
+      "types": "./lib/theme.d.ts",
+      "import": "./lib/theme.js"
+    },
+    "./blocks": {
+      "types": "./lib/blocks.d.ts",
+      "import": "./lib/blocks.js"
+    },
+    "./slug": {
+      "types": "./lib/slug.d.ts",
+      "import": "./lib/slug.js"
+    },
+    "./locale": {
+      "types": "./lib/locale.d.ts",
+      "import": "./lib/locale.js"
+    }
+  },
+  "files": [
+    "lib",
+    "NOTICE.md",
+    "LIMITATIONS.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
