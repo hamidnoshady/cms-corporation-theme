@@ -28,7 +28,7 @@
     "strategy": "registry_image",
     "registryProvider": "ghcr",
     "registryImageRepository": "ghcr.io/hamidnoshady/cms-corporation-theme",
-    "registryVisibility": "private"
+    "registryVisibility": "public"
   },
   "build": {
     "buildPack": "dockerfile",
