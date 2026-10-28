@@ -53,10 +53,20 @@ for (let attempt = 0; attempt < 3; attempt++) {
       console.log(`Registered immutable artifact ${env.IMAGE_DIGEST}`);
       process.exit(0);
     }
-    if (response.status < 500)
+    if (response.status < 500) {
+      const raw = await response.text().catch(() => '');
+      let detail = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.message === 'string') detail = parsed.message;
+      } catch {
+        // non-JSON body: keep the raw text
+      }
+      detail = detail.replace(/\s+/g, ' ').trim().slice(0, 400);
       throw new Error(
-        `Artifact registration rejected (${response.status}); check CMS package configuration`,
+        `Artifact registration rejected (${response.status})${detail ? `: ${detail}` : ''}; check CMS package configuration`,
       );
+    }
   } catch (error) {
     if (attempt === 2 || String(error).includes('registration rejected')) throw error;
   }
