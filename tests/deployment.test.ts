@@ -165,6 +165,36 @@ test('CMS origin policy keeps HTTPS and narrows plain HTTP to internal service n
   assert.equal(resolveCmsOrigin('http://cms.example.test').ok, false);
 });
 
+test('a CMS mounted under a base path keeps that path and refuses unsafe ones', () => {
+  for (const [value, base] of [
+    ['https://cms.example.test', 'https://cms.example.test'],
+    ['https://cms.example.test/', 'https://cms.example.test'],
+    ['https://cms.example.test/cms', 'https://cms.example.test/cms'],
+    ['https://cms.example.test/cms/', 'https://cms.example.test/cms'],
+    ['https://cms.example.test/a/b', 'https://cms.example.test/a/b'],
+    ['http://eshobe-cms-web:3000/admin', 'http://eshobe-cms-web:3000/admin'],
+  ] as const) {
+    const result = resolveCmsOrigin(value);
+    assert.equal(result.ok, true, value);
+    assert.equal(result.ok && result.base, base, value);
+  }
+  // The URL parser canonicalises dot segments before the policy sees them, so the
+  // stored base can never escape its own origin; only real double slashes remain
+  // and are refused.
+  for (const [value, base] of [
+    ['https://cms.example.test/a/../b', 'https://cms.example.test/b'],
+    ['https://cms.example.test/%2e%2e/api', 'https://cms.example.test/api'],
+    ['https://cms.example.test/a/./b', 'https://cms.example.test/a/b'],
+  ] as const) {
+    const result = resolveCmsOrigin(value);
+    assert.equal(result.ok, true, value);
+    assert.equal(result.ok && result.base, base, value);
+  }
+  const unsafe = resolveCmsOrigin('https://cms.example.test/a//b');
+  assert.equal(unsafe.ok, false);
+  assert.equal(!unsafe.ok && unsafe.failure, 'cms_url_path');
+});
+
 test('loopback stays behind the local test flag unless it is allowlisted', () => {
   assert.equal(resolveCmsOrigin('http://127.0.0.1:3300').ok, false);
   setEnv({ APEX_ALLOW_LOCAL_UPSTREAM: 'true' });
@@ -382,4 +412,15 @@ test('a healthy CMS read sends the key only to the approved origin', async () =>
   // Non-CMS paths (and path traversal) are refused before a request is made.
   await assert.rejects(cmsGet('https://evil.test/api/site'), /CMS request failed/);
   await assert.rejects(cmsGet('/api/../api/site'), /CMS request failed/);
+});
+
+test('a base-path CMS keeps the base on every request and never the key elsewhere', async () => {
+  setEnv({ ESHOBE_CMS_URL: 'https://cms.example.test/cms/', ESHOBE_API_KEY: 'secret-site-key' });
+  let seen = '';
+  globalThis.fetch = async (input) => {
+    seen = String(input);
+    return Response.json({ docs: [] });
+  };
+  await cmsGet('/api/globals/header', { locale: 'fa' });
+  assert.equal(seen, 'https://cms.example.test/cms/api/globals/header?locale=fa');
 });

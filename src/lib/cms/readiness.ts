@@ -135,7 +135,7 @@ async function run(started: number): Promise<ReadinessReport> {
 
   let response: Response;
   try {
-    response = await fetch(new URL('/api/site', config.origin), {
+    response = await fetch(`${config.base}/api/site`, {
       headers: { Authorization: `Bearer ${cmsKey()}`, Accept: 'application/json' },
       cache: 'no-store',
       redirect: 'error',

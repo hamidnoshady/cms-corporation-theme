@@ -94,11 +94,14 @@ export function cmsConfigurationError(correlationId = newCorrelationId()): CmsEr
   return new CmsError('config_invalid', correlationId, undefined, 'cms_config_unknown');
 }
 
-/** Resolve the approved CMS origin or throw a logged, fail-closed error. */
-export function requireCmsOrigin(correlationId = newCorrelationId()): URL {
+/** Resolve the approved CMS base (origin + optional base path) or fail closed. */
+export function requireCmsOrigin(correlationId = newCorrelationId()): {
+  base: string;
+  origin: string;
+} {
   const config = resolveCmsOrigin();
   if (!config.ok || !cmsKey().trim()) throw cmsConfigurationError(correlationId);
-  return config.origin;
+  return { base: config.base, origin: new URL(config.base).origin };
 }
 
 /** A logged error for a descriptor that violates the render contract. */
@@ -121,6 +124,7 @@ const validPath = (path: string) =>
 
 async function request(
   origin: URL,
+  base: string,
   path: string,
   search: string,
   correlationId: string,
@@ -129,7 +133,7 @@ async function request(
 ): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(new URL(path + search, origin), init);
+    res = await fetch(base + path + search, init);
   } catch (error) {
     const failure = classifyFetchError(error);
     reportCmsFailure({
@@ -163,30 +167,36 @@ async function request(
 
 export async function cmsGet<T>(path: string, query?: Query, draft = false): Promise<T> {
   const correlationId = newCorrelationId();
-  const origin = requireCmsOrigin(correlationId);
+  const { base, origin } = requireCmsOrigin(correlationId);
   if (!validPath(path)) {
-    reportCmsFailure({ failure: 'request_invalid', correlationId, origin: origin.origin, path });
+    reportCmsFailure({ failure: 'request_invalid', correlationId, origin, path });
     throw new CmsError('request_invalid', correlationId);
   }
-  const url = new URL(path, origin);
-  for (const [k, v] of Object.entries(query ?? {}))
-    if (v !== undefined) url.searchParams.set(k, String(v));
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) search.set(k, String(v));
   const load = async (): Promise<T> => {
-    const res = await request(origin, path, url.search, correlationId, {
-      headers: { Authorization: `Bearer ${cmsKey()}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(4000),
-      redirect: 'error',
-      ...(draft || path === '/api/site'
-        ? { cache: 'no-store' as const }
-        : { cache: 'force-cache' as const, next: { revalidate: 30, tags: [cmsTag()] } }),
-    });
+    const res = await request(
+      new URL(origin),
+      base,
+      path,
+      search.size ? `?${search}` : '',
+      correlationId,
+      {
+        headers: { Authorization: `Bearer ${cmsKey()}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(4000),
+        redirect: 'error',
+        ...(draft || path === '/api/site'
+          ? { cache: 'no-store' as const }
+          : { cache: 'force-cache' as const, next: { revalidate: 30, tags: [cmsTag()] } }),
+      },
+    );
     try {
       return (await res.json()) as T;
     } catch {
       reportCmsFailure({
         failure: 'invalid_response',
         correlationId,
-        origin: origin.origin,
+        origin,
         path,
         upstreamStatus: res.status,
         cause: 'invalid json',
@@ -196,7 +206,9 @@ export async function cmsGet<T>(path: string, query?: Query, draft = false): Pro
   };
   // Descriptor responses authenticated by a site key are private upstream; safe
   // process caching must include the credential hash, never a caller's ?site.
-  return path === '/api/site' && !draft ? descriptorCache.get(`${cmsTag()}:${url}`, load) : load();
+  return path === '/api/site' && !draft
+    ? descriptorCache.get(`${cmsTag()}:${base}${path}?${search}`, load)
+    : load();
 }
 
 export function siteOrigin() {
@@ -220,13 +232,14 @@ export function deploymentIsPreview() {
 
 export async function cmsMedia(path: string, method: string, range: string | null) {
   const correlationId = newCorrelationId();
-  const origin = requireCmsOrigin(correlationId);
+  const { base, origin } = requireCmsOrigin(correlationId);
   if (!validPath(path)) {
-    reportCmsFailure({ failure: 'request_invalid', correlationId, origin: origin.origin, path });
+    reportCmsFailure({ failure: 'request_invalid', correlationId, origin, path });
     throw new CmsError('request_invalid', correlationId);
   }
   return request(
-    origin,
+    new URL(origin),
+    base,
     path,
     '',
     correlationId,

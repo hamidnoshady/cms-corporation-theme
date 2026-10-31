@@ -23,11 +23,11 @@ topologies. Both are addressed:
 
 | Check | Result |
 | --- | --- |
-| Accepted internal shapes | Docker/Compose service names, reserved internal names (`*.internal`, `*.local`, `*.svc`, `*.svc.cluster.local`, `*.docker`, `*.lan`, `*.home.arpa`) and private IP literals (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10) now work over plain HTTP without extra configuration |
+| Accepted internal shapes | Docker/Compose service names, reserved internal names (`*.internal`, `*.local`, `*.svc`, `*.svc.cluster.local`, `*.docker`, `*.lan`, `*.home.arpa`) and private IP literals (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10) now work over plain HTTP without extra configuration; a clean base path (`https://host/base`) is preserved on every request |
 | Still rejected | public HTTP hosts and public IPs, loopback (unless the local test flag or an exact entry), URL credentials/queries/fragments/paths, and **the theme's own public origin** (new `cms_url_self_origin`) |
 | Rule visibility | `cms_url_*` reason code in the error message (`[config_invalid:cms_url_self_origin]`), `detail` on the error object, `configIssue` from public `/api/health` (code only), `reason` from authenticated `/api/ready`, and a boot line `[cms] {"event":"cms_startup",…}` printed before the first request |
 | `pnpm typecheck` / `lint` / `format:check` | PASS |
-| `pnpm test` | PASS — **35 unit tests** (7 origin/policy, 5 failure-class, dedupe, readiness) |
+| `pnpm test` | PASS — **37 unit tests** (origin/policy incl. private ranges, base paths and self-origin; failure classes; dedupe; readiness) |
 | `pnpm build` | PASS — the boot diagnostic runs in the standalone server (verified with both a rejected and an accepted origin) |
 | `pnpm test:e2e` | PASS — **38 tests** |
 | Live `bizamiz.eshobe.com` re-check | **Not executed here** — redeploy, then read `configIssue` from `/api/health` (or the boot line) and `/api/ready` |

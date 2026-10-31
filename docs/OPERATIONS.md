@@ -43,7 +43,8 @@ Accepted shapes for `ESHOBE_CMS_URL` (server-only, never a `NEXT_PUBLIC_*`):
 | `http://cms.example.com`, `http://8.8.8.8` | **no** | public plain HTTP stays rejected; use HTTPS. |
 | the theme's own public origin (`ESHOBE_PUBLIC_ORIGIN` / `ESHOBE_SITE_DOMAIN`) | **no** — `cms_url_self_origin` | the container would call itself: the self-routing loop this policy exists to prevent. |
 | `http://127.0.0.1:3300` / `http://localhost:3000` | only with that exact `APEX_CMS_HTTP_ORIGINS` entry, or locally with `APEX_ALLOW_LOCAL_UPSTREAM=true` | loopback inside the container is the theme itself; a test escape hatch, never a production default. |
-| URL with credentials, `?query`, `#fragment` or a path | **no** | the site key must never travel in a URL, and the theme appends `/api/...` itself. |
+| `https://host/base-path` | yes | a CMS mounted under a base path; the theme appends `/api/...` to it. Dot segments are canonicalized by the URL parser and `//` is refused. |
+| URL with credentials, `?query` or `#fragment` | **no** | the site key must never travel in a URL. |
 
 Anything else internal can be opted in explicitly with
 `APEX_CMS_HTTP_ORIGINS=host:port` (exact match, no wildcards, comma-separated).
@@ -86,7 +87,8 @@ before any request), `dns`/`network`/`timeout`/`redirect`, `auth` (upstream
 `invalid_response`, `contract_mismatch` and `site_mismatch`. A `config_invalid`
 always carries a `reason`: `cms_url_malformed`, `cms_url_scheme`,
 `cms_url_credentials`, `cms_url_fragment`, `cms_url_query`, `cms_url_path`,
-`cms_url_untrusted_http` or `cms_url_self_origin`. Lines never contain
+`cms_url_untrusted_http`, `cms_url_self_origin` or `cms_url_path` (an unsafe base
+path such as `//`). Lines never contain
 the bearer key, an env value, request headers or an upstream body. Identical
 failures are folded for 60 s (`suppressed`) so an outage cannot flood the log, and
 the `correlationId` also appears on the thrown error so a Next error digest can be
@@ -142,7 +144,7 @@ complete until the deployment has been redeployed and `/api/ready` returns 200.
 |---|---|---|
 | `cms_url_self_origin` | `ESHOBE_CMS_URL` is this theme's own public origin | set Eshobe's `DEPLOY_CMS_URL` to the internal CMS origin, then redeploy |
 | `cms_url_untrusted_http` | public plain-HTTP origin | use HTTPS, or an internal destination from the table above |
-| `cms_url_path` / `_query` / `_fragment` / `_credentials` | the value is not a bare origin | strip it: `http://eshobe-cms-web:3000`, no trailing path or auth |
+| `cms_url_path` / `_query` / `_fragment` / `_credentials` | the value is not a clean base URL | use `http://eshobe-cms-web:3000` or `https://host/base-path`; no `//`, query, fragment or auth |
 | `cms_url_scheme` / `_malformed` | missing scheme or not a URL | include `http://` or `https://` |
 | `cms_url_missing` / `cms_key_missing` | platform variables not injected | fix the Eshobe binding, then redeploy |
 

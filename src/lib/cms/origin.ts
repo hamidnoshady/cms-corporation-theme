@@ -42,8 +42,9 @@ export type CmsConfigFailure =
   | 'cms_url_self_origin'
   | 'cms_key_missing';
 
+/** `base` is `scheme://host[:port]` plus an optional normalized base path. */
 export type CmsConfig =
-  | { ok: true; origin: URL; label: string }
+  | { ok: true; base: string; label: string }
   | { ok: false; failure: CmsConfigFailure; hint: string };
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
@@ -181,6 +182,15 @@ export function isSelfOrigin(url: URL): boolean {
   return publicSiteHosts().includes(host);
 }
 
+/** `/cms/` -> `/cms`; `/` -> ''; null when the path is unsafe to use as a base. */
+export function normalizeBasePath(pathname: string): string | null {
+  const path = pathname.replace(/\/+$/, '');
+  if (!path || path === '/') return '';
+  if (!path.startsWith('/') || path.includes('//') || path.includes('..')) return null;
+  if (/[\\\u0000-\u001f?#]/.test(path)) return null;
+  return path;
+}
+
 function failure(failure: CmsConfigFailure, hint: string): CmsConfig {
   return { ok: false, failure, hint };
 }
@@ -214,10 +224,13 @@ export function resolveCmsOrigin(raw = cmsUrlRaw()): CmsConfig {
     return failure('cms_url_fragment', 'ESHOBE_CMS_URL must not contain a fragment (#...).');
   if (url.search)
     return failure('cms_url_query', 'ESHOBE_CMS_URL must not contain a query string.');
-  if (url.pathname !== '/' && url.pathname !== '')
+  // A CMS mounted under a base path is supported; the theme appends `/api/...` to
+  // it. Traversal, duplicate slashes and control characters are refused.
+  const basePath = normalizeBasePath(url.pathname);
+  if (basePath === null)
     return failure(
       'cms_url_path',
-      'ESHOBE_CMS_URL must be an origin without a path; the theme appends /api/... itself.',
+      'The path in ESHOBE_CMS_URL is not a plain base path (no //, .., ? or control characters); use https://host or https://host/base-path.',
     );
   if (isSelfOrigin(url))
     return failure(
@@ -238,16 +251,17 @@ export function resolveCmsOrigin(raw = cmsUrlRaw()): CmsConfig {
         `Plain-HTTP CMS origins are accepted only for internal destinations (Docker service name, *.internal/*.local/*.svc, or a private IP). Add the exact origin to APEX_CMS_HTTP_ORIGINS=${host} (no wildcards) if it is internal, or serve the CMS over HTTPS.`,
       );
   }
-  const origin = new URL(url.origin);
-  return { ok: true, origin, label: origin.origin };
+  return { ok: true, base: url.origin + basePath, label: url.origin + basePath };
 }
 
-/** Redacted origin for diagnostics: scheme + host only, never credentials or path. */
+/** Redacted origin for diagnostics: scheme + host + base path, never credentials. */
 export function safeCmsOrigin(raw = cmsUrlRaw()): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    const basePath = normalizeBasePath(url.pathname);
+    return basePath === null ? url.origin : url.origin + basePath;
   } catch {
     return null;
   }
