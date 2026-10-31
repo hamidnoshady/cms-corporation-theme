@@ -129,12 +129,25 @@ test('readiness distinguishes configuration, auth, upstream and network failures
     fetch?: () => Promise<Response>;
     status: number;
     checks: Record<string, string>;
+    reason?: string;
   }[] = [
     {
       name: 'untrusted plain-HTTP origin',
       env: { ESHOBE_CMS_URL: 'http://public.example.test', APEX_CMS_HTTP_ORIGINS: undefined },
       status: 503,
       checks: { config: 'invalid', cms: 'skipped' },
+      reason: 'cms_url_untrusted_http',
+    },
+    {
+      name: "CMS origin equal to this site's own origin",
+      env: {
+        ESHOBE_CMS_URL: 'https://site.test',
+        ESHOBE_PUBLIC_ORIGIN: 'https://site.test',
+        APEX_CMS_HTTP_ORIGINS: undefined,
+      },
+      status: 503,
+      checks: { config: 'invalid', cms: 'skipped' },
+      reason: 'cms_url_self_origin',
     },
     {
       name: 'missing origin',
@@ -216,6 +229,7 @@ test('readiness distinguishes configuration, auth, upstream and network failures
     for (const [key, value] of Object.entries(entry.checks))
       assert.equal(report.checks[key], value, `${entry.name}: ${key}`);
     assert.equal(typeof report.hints[0], 'string', entry.name);
+    if (entry.reason) assert.equal(report.reason, entry.reason, entry.name);
     assert.ok(!JSON.stringify(report).includes(SECRET), entry.name);
     assert.ok(!JSON.stringify(report).includes(TOKEN), entry.name);
   }
@@ -234,7 +248,9 @@ test('liveness stays a local 200 with a misconfiguration reported, during a CMS 
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.mode, 'invalid');
+  assert.equal(body.configIssue, 'cms_url_untrusted_http');
   assert.equal(body.readiness, '/api/ready');
+  assert.ok(!JSON.stringify(body).includes('public.example.test'));
   assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(calls, 0);
 

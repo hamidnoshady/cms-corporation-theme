@@ -9,9 +9,17 @@ test('an untrusted public HTTP CMS origin fails closed with the localized fallba
   page,
   request,
 }) => {
+  // Liveness still answers locally, and names the rejecting rule without
+  // exposing the configured host to an unauthenticated caller.
   const health = await request.get('/api/health');
   expect(health.status()).toBe(200);
-  expect(await health.json()).toMatchObject({ ok: true, mode: 'invalid' });
+  const healthBody = await health.json();
+  expect(healthBody).toMatchObject({
+    ok: true,
+    mode: 'invalid',
+    configIssue: 'cms_url_untrusted_http',
+  });
+  expect(JSON.stringify(healthBody)).not.toContain('cms.public.example.test');
 
   const ready = await request.get('/api/ready', {
     headers: { Authorization: 'Bearer fixture-revalidate-secret' },
@@ -20,6 +28,7 @@ test('an untrusted public HTTP CMS origin fails closed with the localized fallba
   const report = await ready.json();
   expect(report.ok).toBe(false);
   expect(report.checks).toMatchObject({ config: 'invalid', cms: 'skipped' });
+  expect(report.reason).toBe('cms_url_untrusted_http');
   expect(report.hints.join(' ')).toContain('APEX_CMS_HTTP_ORIGINS=cms.public.example.test');
   expect(JSON.stringify(report)).not.toContain('fixture-site-key');
 

@@ -39,6 +39,8 @@ export type ReadinessReport = {
   origin: string | null;
   cached: boolean;
   checks: ReadinessChecks;
+  /** Configuration rule code (e.g. `cms_url_self_origin`); never a host or key. */
+  reason: string | null;
   hints: string[];
 };
 
@@ -76,7 +78,13 @@ export async function probeCmsReadiness(now = Date.now()): Promise<ReadinessRepo
 async function run(started: number): Promise<ReadinessReport> {
   const correlationId = newCorrelationId();
   const origin = safeCmsOrigin();
-  const build = (ok: boolean, checks: ReadinessChecks, hints: string[] = []): ReadinessReport => ({
+  let reason: string | null = null;
+  const build = (
+    ok: boolean,
+    checks: ReadinessChecks,
+    hints: string[] = [],
+    rule?: string,
+  ): ReadinessReport => ({
     ok,
     checkedAt: new Date().toISOString(),
     correlationId,
@@ -84,6 +92,7 @@ async function run(started: number): Promise<ReadinessReport> {
     origin,
     cached: false,
     checks,
+    reason: rule ?? reason,
     hints,
   });
   const skipped = { contract: 'skipped', site: 'skipped' } as const;
@@ -94,7 +103,8 @@ async function run(started: number): Promise<ReadinessReport> {
     extra: { upstreamStatus?: number; reason?: string; cause?: string } = {},
   ) => {
     reportCmsFailure({ failure, correlationId, origin, path: '/api/site', hint, ...extra });
-    return build(false, checks, [hint]);
+    if (extra.reason) reason = extra.reason;
+    return build(false, checks, [hint], extra.reason);
   };
 
   const config = resolveCmsOrigin();

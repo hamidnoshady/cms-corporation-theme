@@ -34,10 +34,24 @@ export const published = { 'where[_status][equals]': 'published', draft: 'false'
 export type CmsMode = 'cms' | 'demo' | 'unconfigured' | 'invalid';
 /** Reported by liveness/readiness; never triggers a network call. */
 export function cmsMode(): CmsMode {
-  const configured = cmsConfigured();
-  if (configured) return resolveCmsOrigin().ok ? 'cms' : 'invalid';
+  if (cmsConfigured()) return resolveCmsOrigin().ok ? 'cms' : 'invalid';
   if (cmsUrlRaw() || cmsKey().trim()) return 'invalid';
   return demoEnabled() ? 'demo' : 'unconfigured';
+}
+
+/**
+ * The configuration reason code for an invalid mode (never a host, key or hint).
+ * Exposed by `/api/health` so an operator can see which rule failed without
+ * container log access; null when the configuration is usable.
+ */
+export function cmsConfigIssue(): string | null {
+  if (!cmsConfigured()) {
+    if (cmsUrlRaw() && !cmsKey().trim()) return 'cms_key_missing';
+    if (cmsKey().trim() && !cmsUrlRaw()) return 'cms_url_missing';
+    return null;
+  }
+  const config = resolveCmsOrigin();
+  return config.ok ? null : config.failure;
 }
 
 export function invalidateCmsCache() {
@@ -52,6 +66,10 @@ export function cmsConfigFailure(config: Exclude<CmsConfig, { ok: true }>, corre
       : config.failure === 'cms_url_missing'
         ? 'config_missing'
         : 'config_invalid';
+  // A full `[cms]` line goes to the log; the reason code also rides on the error
+  // message (e.g. `[config_invalid:cms_url_self_origin]`) so the rule that fired is
+  // visible even when only the framework's error log is available. Neither carries
+  // an env value, a header or the bearer key.
   reportCmsFailure({
     failure,
     correlationId,
@@ -59,7 +77,7 @@ export function cmsConfigFailure(config: Exclude<CmsConfig, { ok: true }>, corre
     reason: config.failure,
     hint: config.hint,
   });
-  return new CmsError(failure, correlationId);
+  return new CmsError(failure, correlationId, undefined, config.failure);
 }
 
 const KEY_HINT = 'Set ESHOBE_API_KEY to the site-scoped key issued by Eshobe for this deployment.';
@@ -73,7 +91,7 @@ export function cmsConfigurationError(correlationId = newCorrelationId()): CmsEr
       { ok: false, failure: 'cms_key_missing', hint: KEY_HINT },
       correlationId,
     );
-  return new CmsError('config_invalid', correlationId);
+  return new CmsError('config_invalid', correlationId, undefined, 'cms_config_unknown');
 }
 
 /** Resolve the approved CMS origin or throw a logged, fail-closed error. */

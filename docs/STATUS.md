@@ -13,6 +13,25 @@ Do not close the issue solely because these tests pass.
 | 3 — Commercial | Existing Biza Miz lead-intake adapter, validation/consent/attribution/challenges/retries/idempotency; approved-catalogue renderer; owner-destination links; opt-in event transport and signed conversion adapter | Real CRM receipt; authorized public pricing export; owner URL; metrics collector/emitter verification |
 | 4 — Hardening | Unit/contract/browser/axe/visual/performance checks; SEO; draft/host isolation; standalone build and Docker/CI/GHCR registration tooling; launch and rollback runbook | CI container result for the release commit; Eshobe preview; same-digest promotion, production smoke and rollback; real-device/field performance evidence |
 
+## Follow-up after the first deploy — 2026-10-31 (after #7)
+
+The first deployment of #7 still rendered the fallback and logged
+`Error [CmsError]: CMS request failed (503) [config_invalid]`: the new taxonomy
+worked, but the rule that rejected `ESHOBE_CMS_URL` was not visible in the
+framework log, and the accepted plain-HTTP shapes were narrower than real Eshobe
+topologies. Both are addressed:
+
+| Check | Result |
+| --- | --- |
+| Accepted internal shapes | Docker/Compose service names, reserved internal names (`*.internal`, `*.local`, `*.svc`, `*.svc.cluster.local`, `*.docker`, `*.lan`, `*.home.arpa`) and private IP literals (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10) now work over plain HTTP without extra configuration |
+| Still rejected | public HTTP hosts and public IPs, loopback (unless the local test flag or an exact entry), URL credentials/queries/fragments/paths, and **the theme's own public origin** (new `cms_url_self_origin`) |
+| Rule visibility | `cms_url_*` reason code in the error message (`[config_invalid:cms_url_self_origin]`), `detail` on the error object, `configIssue` from public `/api/health` (code only), `reason` from authenticated `/api/ready`, and a boot line `[cms] {"event":"cms_startup",…}` printed before the first request |
+| `pnpm typecheck` / `lint` / `format:check` | PASS |
+| `pnpm test` | PASS — **35 unit tests** (7 origin/policy, 5 failure-class, dedupe, readiness) |
+| `pnpm build` | PASS — the boot diagnostic runs in the standalone server (verified with both a rejected and an accepted origin) |
+| `pnpm test:e2e` | PASS — **38 tests** |
+| Live `bizamiz.eshobe.com` re-check | **Not executed here** — redeploy, then read `configIssue` from `/api/health` (or the boot line) and `/api/ready` |
+
 ## Deployment hardening for issue #6 — 2026-10-31
 
 The deployed theme rejected the CMS's operator-provisioned internal plain-HTTP

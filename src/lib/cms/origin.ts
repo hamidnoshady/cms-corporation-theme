@@ -12,17 +12,20 @@ import 'server-only';
  * This module keeps that relaxation narrow and explicit:
  *  - HTTPS origins are always accepted (credentials, fragments, queries and paths
  *    are rejected);
- *  - plain HTTP is accepted only for
- *      1. a single-label Docker/Compose service name (`eshobe-cms-web`, and any
- *         other name with no dot, `:` or `localhost`), which cannot be a public
- *         origin, or
- *      2. the exact `host[:port]` named in `APEX_CMS_HTTP_ORIGINS` (operator
- *         opt-in, no wildcards) for multi-label internal DNS names and internal
- *         IP addresses, or
- *      3. loopback during local tests with `APEX_ALLOW_LOCAL_UPSTREAM=true`;
+ *  - plain HTTP is accepted only for destinations that are not publicly routable:
+ *      1. a single-label Docker/Compose service name (`eshobe-cms-web`),
+ *      2. a reserved private DNS suffix (`*.internal`, `*.local`, `*.svc`,
+ *         `*.svc.cluster.local`, `*.docker`, `*.lan`, `*.home.arpa`),
+ *      3. a private address literal (10/8, 172.16/12, 192.168/16, 169.254/16,
+ *         100.64/10, IPv6 fc00::/7 and fe80::/10),
+ *      4. the exact `host[:port]` named in `APEX_CMS_HTTP_ORIGINS` (operator
+ *         opt-in, no wildcards), or
+ *      5. loopback during local tests with `APEX_ALLOW_LOCAL_UPSTREAM=true`;
  *  - an arbitrary/public HTTP URL (`http://cms.example.com`), a public IP, a
  *    user-controlled destination, URL credentials or a redirect target can
- *    therefore never become the CMS origin.
+ *    therefore never become the CMS origin. Loopback stays rejected by default
+ *    because `http://localhost:3000` from inside the container is the theme
+ *    itself, which produces the self-routing loop this policy must prevent.
  *
  * Only the origin is ever kept, so the site key can only ever be sent to that
  * approved origin.
@@ -36,6 +39,7 @@ export type CmsConfigFailure =
   | 'cms_url_query'
   | 'cms_url_path'
   | 'cms_url_untrusted_http'
+  | 'cms_url_self_origin'
   | 'cms_key_missing';
 
 export type CmsConfig =
@@ -43,6 +47,18 @@ export type CmsConfig =
   | { ok: false; failure: CmsConfigFailure; hint: string };
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+/** Reserved for private/internal use, so they cannot name a public CMS. */
+const INTERNAL_SUFFIXES = [
+  '.internal',
+  '.local',
+  '.localhost',
+  '.svc',
+  '.svc.cluster.local',
+  '.cluster.local',
+  '.docker',
+  '.lan',
+  '.home.arpa',
+];
 const HOST_ENTRY =
   /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?::\d{1,5})?$/;
 
@@ -107,6 +123,64 @@ export function isInternalServiceName(hostname: string): boolean {
   );
 }
 
+/** Reserved `.internal`/`.local`/`.svc` style names: never public DNS. */
+export function isInternalSuffixName(hostname: string): boolean {
+  const name = hostname.toLowerCase();
+  return INTERNAL_SUFFIXES.some((suffix) => name.length > suffix.length && name.endsWith(suffix));
+}
+
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+/** RFC1918 / link-local / CGNAT / IPv6 ULA and link-local literals. */
+export function isPrivateAddress(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const v4 = IPV4.exec(host);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (v4.slice(1).some((part) => Number(part) > 255)) return false;
+    return (
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      (a === 100 && b >= 64 && b <= 127)
+    );
+  }
+  if (!host.includes(':')) return false;
+  return /^f[cd][0-9a-f]{0,2}:/.test(host) || /^fe[89ab][0-9a-f]?:/.test(host);
+}
+
+/** Every plain-HTTP destination this policy accepts without extra configuration. */
+export function isTrustedHttpHost(hostname: string): boolean {
+  return (
+    isInternalServiceName(hostname) || isInternalSuffixName(hostname) || isPrivateAddress(hostname)
+  );
+}
+
+/** Hosts this deployment publishes, from which a CMS origin would loop back. */
+export function publicSiteHosts(): string[] {
+  const hosts = new Set<string>();
+  for (const value of [
+    process.env.ESHOBE_PUBLIC_ORIGIN,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.ESHOBE_SITE_DOMAIN ? `https://${process.env.ESHOBE_SITE_DOMAIN}` : undefined,
+  ]) {
+    if (!value) continue;
+    try {
+      hosts.add(new URL(value).host.toLowerCase());
+    } catch {
+      if (process.env.ESHOBE_SITE_DOMAIN) hosts.add(process.env.ESHOBE_SITE_DOMAIN.toLowerCase());
+    }
+  }
+  return [...hosts];
+}
+
+/** True when the CMS origin is this theme's own public origin (a routing loop). */
+export function isSelfOrigin(url: URL): boolean {
+  const host = url.host.toLowerCase();
+  return publicSiteHosts().includes(host);
+}
+
 function failure(failure: CmsConfigFailure, hint: string): CmsConfig {
   return { ok: false, failure, hint };
 }
@@ -145,18 +219,23 @@ export function resolveCmsOrigin(raw = cmsUrlRaw()): CmsConfig {
       'cms_url_path',
       'ESHOBE_CMS_URL must be an origin without a path; the theme appends /api/... itself.',
     );
+  if (isSelfOrigin(url))
+    return failure(
+      'cms_url_self_origin',
+      `ESHOBE_CMS_URL points at this theme's own public origin (${url.origin}); the container would call itself and the request would loop or answer 503. Set Eshobe's DEPLOY_CMS_URL to a proxy-free internal CMS origin such as http://eshobe-cms-web:3000, then redeploy.`,
+    );
   if (url.protocol === 'http:') {
     const host = url.host.toLowerCase();
     const allowlist = parseCmsHttpOrigins();
     const loopback = LOOPBACK.has(url.hostname.toLowerCase());
     const trusted =
       allowlist.includes(host) ||
-      isInternalServiceName(url.hostname) ||
+      isTrustedHttpHost(url.hostname) ||
       (loopback && localUpstreamAllowed());
     if (!trusted)
       return failure(
         'cms_url_untrusted_http',
-        `Plain-HTTP CMS origins are rejected for public hosts. Use an internal Docker/Coolify service name (no dot), list the exact origin in APEX_CMS_HTTP_ORIGINS=${host} (no wildcards), or serve the CMS over HTTPS.`,
+        `Plain-HTTP CMS origins are accepted only for internal destinations (Docker service name, *.internal/*.local/*.svc, or a private IP). Add the exact origin to APEX_CMS_HTTP_ORIGINS=${host} (no wildcards) if it is internal, or serve the CMS over HTTPS.`,
       );
   }
   const origin = new URL(url.origin);
