@@ -30,15 +30,15 @@ export async function GET(request: Request) {
   if (!path) return jsonError('invalid_path', 400);
   if (!/^[A-Za-z0-9_.-]{16,4096}$/.test(token)) return jsonError('forbidden', 403);
   // Same CMS-specific origin policy as every other server-only CMS call.
-  let base: URL;
+  let base: string;
   try {
     // requireCmsOrigin() already logged the sanitized failure and correlation ID.
-    base = requireCmsOrigin(correlationId);
+    base = requireCmsOrigin(correlationId).base;
   } catch {
     return jsonError('unavailable', 503);
   }
   try {
-    const result = await fetch(new URL('/api/users/me', base), {
+    const result = await fetch(`${base}/api/users/me`, {
       headers: { Cookie: `payload-token=${token}` },
       cache: 'no-store',
       redirect: 'error',
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     reportCmsFailure({
       failure: classifyFetchError(error),
       correlationId,
-      origin: base.origin,
+      origin: new URL(base).origin,
       path: '/api/users/me',
       cause: describeFetchError(error),
     });

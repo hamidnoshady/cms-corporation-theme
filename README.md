@@ -31,15 +31,22 @@ without credentials **fails closed**, unless `APEX_DEMO_MODE=true` is explicitly
 set. Partial CMS configuration never falls back to Biza Miz content. Demo and
 Eshobe preview origins are noindex.
 
-`ESHOBE_CMS_URL` must be an origin the container can reach directly: HTTPS, or an
-internal plain-HTTP Docker/Coolify service name such as
-`http://eshobe-cms-web:3000` (Eshobe copies its `DEPLOY_CMS_URL` here). Other
-internal names or IP addresses over HTTP need an exact
-`APEX_CMS_HTTP_ORIGINS=host:port` entry; public HTTP origins, credentials,
-query strings, fragments and paths are rejected. `GET /api/health` is local
-liveness only; `GET /api/ready` (bearer `APEX_READY_TOKEN` or
-`ESHOBE_REVALIDATE_SECRET`) performs one bounded CMS `/api/site` read and reports
-the failure class without exposing secrets. See
+`ESHOBE_CMS_URL` must be an origin the container can reach directly: HTTPS, or a
+non-public plain-HTTP destination — a Docker/Coolify service name
+(`http://eshobe-cms-web:3000`, what Eshobe copies from `DEPLOY_CMS_URL`), a
+reserved internal name (`*.internal`, `*.local`, `*.svc.cluster.local`, …) or a
+private IP. Anything else internal needs an exact
+`APEX_CMS_HTTP_ORIGINS=host:port` entry. Public HTTP origins, the theme's own
+public origin (a self-routing loop), credentials, query strings, fragments and
+paths are rejected.
+
+A rejected configuration is named, not just logged: the container prints one
+`[cms] {"event":"cms_startup",…,"reason":"…"}` line at boot, the error message
+carries the rule (`CMS request failed (503) [config_invalid:cms_url_self_origin]`),
+and `GET /api/health` reports `configIssue` — a code only, never a host or a key.
+`GET /api/health` stays local liveness; `GET /api/ready` (bearer
+`APEX_READY_TOKEN` or `ESHOBE_REVALIDATE_SECRET`) performs one bounded CMS
+`/api/site` read and reports the failure class without exposing secrets. See
 [CMS origin, liveness and CMS readiness](docs/OPERATIONS.md#cms-origin-liveness-and-cms-readiness).
 
 ## What is implemented

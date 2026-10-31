@@ -67,12 +67,21 @@ export const cmsStatus = (failure: CmsFailure) => STATUS[failure];
 export class CmsError extends Error {
   readonly status: number;
   readonly retryable: boolean;
+  /**
+   * @param detail a short, non-secret reason code for configuration failures so
+   *   the class is visible in a framework error log without the `[cms]` line.
+   */
   constructor(
     readonly failure: CmsFailure,
     readonly correlationId = '',
     readonly upstreamStatus?: number,
+    readonly detail?: string,
   ) {
-    super(`CMS request failed (${STATUS[failure]}) [${failure}]`);
+    super(
+      `CMS request failed (${STATUS[failure]}) [${failure}${
+        detail && /^[a-z_]{1,40}$/.test(detail) ? `:${detail}` : ''
+      }]`,
+    );
     this.name = 'CmsError';
     this.status = STATUS[failure];
     this.retryable = RETRYABLE[failure];

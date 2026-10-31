@@ -36,12 +36,18 @@ Accepted shapes for `ESHOBE_CMS_URL` (server-only, never a `NEXT_PUBLIC_*`):
 
 | Value | Accepted | Why |
 |---|---|---|
-| `https://cms.example.com` | yes | TLS origin, any path/credentials/fragment rejected. |
+| `https://cms.example.com` | yes | TLS origin; credentials, paths, queries and fragments rejected. |
 | `http://eshobe-cms-web:3000` | yes | single-label Docker/Compose service name; it cannot be a public DNS origin. |
-| `http://internal.example:8080` | only with `APEX_CMS_HTTP_ORIGINS=internal.example:8080` | multi-label internal name or internal IP, exact `host[:port]`, no wildcards. |
-| `http://cms.example.com` | **no** | public plain HTTP stays rejected; use HTTPS. |
-| `http://127.0.0.1:3300` | only with that exact allowlist entry, or locally with `APEX_ALLOW_LOCAL_UPSTREAM=true` | loopback is a test escape hatch, never a production default. |
-| URL with credentials, `?query`, `#fragment` or a path | **no** | the site key must never travel in a URL, and the theme appends `/api/...` itself. |
+| `http://cms.internal:3000`, `http://cms.svc.cluster.local:3000`, `*.local`, `*.docker`, `*.lan`, `*.home.arpa` | yes | reserved private suffixes, never public DNS. |
+| `http://10.0.0.12:3000`, `http://172.17.0.2:3000`, `http://192.168.1.20:3000`, `http://[fd00::1]:3000` | yes | private/link-local IP literals (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10). |
+| `http://cms.example.com`, `http://8.8.8.8` | **no** | public plain HTTP stays rejected; use HTTPS. |
+| the theme's own public origin (`ESHOBE_PUBLIC_ORIGIN` / `ESHOBE_SITE_DOMAIN`) | **no** — `cms_url_self_origin` | the container would call itself: the self-routing loop this policy exists to prevent. |
+| `http://127.0.0.1:3300` / `http://localhost:3000` | only with that exact `APEX_CMS_HTTP_ORIGINS` entry, or locally with `APEX_ALLOW_LOCAL_UPSTREAM=true` | loopback inside the container is the theme itself; a test escape hatch, never a production default. |
+| `https://host/base-path` | yes | a CMS mounted under a base path; the theme appends `/api/...` to it. Dot segments are canonicalized by the URL parser and `//` is refused. |
+| URL with credentials, `?query` or `#fragment` | **no** | the site key must never travel in a URL. |
+
+Anything else internal can be opted in explicitly with
+`APEX_CMS_HTTP_ORIGINS=host:port` (exact match, no wildcards, comma-separated).
 
 The policy lives in `src/lib/cms/origin.ts` and applies to every server-only CMS
 call (`cmsGet`, `cmsMedia`, the native preview handoff). It is separate from the
@@ -49,6 +55,20 @@ stricter shared `serverUrl()` used by the lead, analytics and pricing
 integrations, and it never relaxes them. Requests always use the approved origin,
 send the site-scoped bearer key only there, refuse redirects, and keep bounded
 timeouts (4 s content, 10 s media, 2.5 s readiness).
+
+Every process start also prints one boot line, before any request arrives, so a
+misconfigured deployment is diagnosable from container logs alone:
+
+```text
+[cms] {"event":"cms_startup","mode":"invalid","origin":"http://bizamiz.eshobe.com",
+       "reason":"cms_url_self_origin","configIssue":"cms_url_self_origin",
+       "hint":"… Set Eshobe's DEPLOY_CMS_URL to a proxy-free internal CMS origin …"}
+```
+
+The reason code is repeated where no log access is needed: `detail` on the thrown
+`CmsError` (its message is `CMS request failed (503) [config_invalid:cms_url_self_origin]`),
+`configIssue` from the public `GET /api/health` (a code only — never a host), and
+`reason` from the authenticated `GET /api/ready`.
 
 A missing, partial or rejected configuration **fails closed**: the theme throws a
 typed error and renders its localized fallback. It never falls back to demo
@@ -64,7 +84,11 @@ Every failure is logged once per class and window as one sanitized line:
 `failure` distinguishes `config_missing`/`config_invalid`/`key_missing` (rejected
 before any request), `dns`/`network`/`timeout`/`redirect`, `auth` (upstream
 401/403), `rate_limited`, `upstream_unavailable` (upstream 502/503/504),
-`invalid_response`, `contract_mismatch` and `site_mismatch`. Lines never contain
+`invalid_response`, `contract_mismatch` and `site_mismatch`. A `config_invalid`
+always carries a `reason`: `cms_url_malformed`, `cms_url_scheme`,
+`cms_url_credentials`, `cms_url_fragment`, `cms_url_query`, `cms_url_path`,
+`cms_url_untrusted_http`, `cms_url_self_origin` or `cms_url_path` (an unsafe base
+path such as `//`). Lines never contain
 the bearer key, an env value, request headers or an upstream body. Identical
 failures are folded for 60 s (`suppressed`) so an outage cannot flood the log, and
 the `correlationId` also appears on the thrown error so a Next error digest can be
@@ -74,8 +98,8 @@ matched to the diagnostic line.
 
 | Endpoint | Scope | Auth | Behaviour |
 |---|---|---|---|
-| `GET /api/health` | local process only | none | Always `200` with `ok: true` and `mode: cms \| demo \| unconfigured \| invalid`. Never calls the CMS, so a CMS blip cannot mark every container unhealthy. This is the manifest `build.healthCheckPath` that Coolify probes from inside the container. |
-| `GET /api/ready` | real CMS `GET /api/site` | `Authorization: Bearer` equal to `APEX_READY_TOKEN` or `ESHOBE_REVALIDATE_SECRET` (values shorter than 16 characters are ignored) | `200` only when the descriptor answers with `contractVersion: 1`, the matching site id and an active site; otherwise `503` with a sanitized `checks` object, hints, latency and correlation id. Coalesced for 2 s; no key, upstream header or body in the response. |
+| `GET /api/health` | local process only | none | Always `200` with `ok: true` and `mode: cms \| demo \| unconfigured \| invalid`. When invalid it also carries `configIssue` (a rule code such as `cms_url_self_origin`, never a host or a key). Never calls the CMS, so a CMS blip cannot mark every container unhealthy. This is the manifest `build.healthCheckPath` that Coolify probes from inside the container. |
+| `GET /api/ready` | real CMS `GET /api/site` | `Authorization: Bearer` equal to `APEX_READY_TOKEN` or `ESHOBE_REVALIDATE_SECRET` (values shorter than 16 characters are ignored) | `200` only when the descriptor answers with `contractVersion: 1`, the matching site id and an active site; otherwise `503` with a sanitized `checks` object, `reason`, hints, latency and correlation id. Coalesced for 2 s; no key, upstream header or body in the response. It is authenticated, so its remediation hint may name the internal host that needs the exact allowlist entry. |
 
 `/api/ready` stays **out** of `healthCheckPath` on purpose. The upstream Theme API
 requires the container health check to stay cheap and local: pointing it at a
@@ -97,19 +121,32 @@ complete until the deployment has been redeployed and `/api/ready` returns 200.
 
 ### Diagnosing the "CMS request failed (503)" fallback
 
-1. On the theme container, print `ESHOBE_CMS_URL` (never the key) and confirm the
+1. Call `GET /api/health`. `mode: "invalid"` plus `configIssue` names the rule that
+   rejected the configuration without exposing the host, for example
+   `{"ok":true,"mode":"invalid","configIssue":"cms_url_self_origin"}`. The same
+   code appears in the container's `[cms] {"event":"cms_startup",…}` line and in
+   the Next error message as `[config_invalid:cms_url_self_origin]`.
+2. On the theme container, print `ESHOBE_CMS_URL` (never the key) and confirm the
    scheme/host matches the table above.
-2. From inside the same container call `GET ${ESHOBE_CMS_URL}/api/site` with the
+3. From inside the same container call `GET ${ESHOBE_CMS_URL}/api/site` with the
    server-only bearer key and record only the status and content type. A TLS or
    connection error here is a network/proxy dependency; a 401/403 is a key
    problem; a 200 means the theme configuration is the problem.
-3. Call `/api/ready` with the deployment token and read `checks`:
+4. Call `/api/ready` with the deployment token and read `checks`:
    `config` (policy/key), `cms` (`unavailable`, `auth`, `timeout`, `redirect`,
    `unreachable`, `invalid_response`), `contract`, `site`.
-4. Match the `correlationId` in the response with the `[cms]` log line; the Next
+5. Match the `correlationId` in the response with the `[cms]` log line; the Next
    error digest next to it is the browser's `Reference:` value.
-5. Fix the origin/allowlist/key, redeploy, and re-run readiness plus the two
+6. Fix the origin/allowlist/key, redeploy, and re-run readiness plus the two
    locales before promoting.
+
+| `configIssue` | Meaning | Fix |
+|---|---|---|
+| `cms_url_self_origin` | `ESHOBE_CMS_URL` is this theme's own public origin | set Eshobe's `DEPLOY_CMS_URL` to the internal CMS origin, then redeploy |
+| `cms_url_untrusted_http` | public plain-HTTP origin | use HTTPS, or an internal destination from the table above |
+| `cms_url_path` / `_query` / `_fragment` / `_credentials` | the value is not a clean base URL | use `http://eshobe-cms-web:3000` or `https://host/base-path`; no `//`, query, fragment or auth |
+| `cms_url_scheme` / `_malformed` | missing scheme or not a URL | include `http://` or `https://` |
+| `cms_url_missing` / `cms_key_missing` | platform variables not injected | fix the Eshobe binding, then redeploy |
 
 ## Tenant and cache boundaries
 
