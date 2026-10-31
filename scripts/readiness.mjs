@@ -24,8 +24,39 @@ check(
 check('Approved published pricing source configured', !!process.env.BIZAMIZ_CATALOGUE_URL);
 if (cms && key) {
   const origin = new URL(cms);
-  if (origin.protocol !== 'https:' || origin.username || origin.password)
-    throw new Error('Readiness requires credential-free HTTPS CMS origin');
+  // Mirrors src/lib/cms/origin.ts: credential-free HTTPS, a single-label internal
+  // service name over HTTP, or an exact APEX_CMS_HTTP_ORIGINS entry.
+  const allowlist = (process.env.APEX_CMS_HTTP_ORIGINS ?? '')
+    .split(',')
+    .map((entry) =>
+      entry
+        .trim()
+        .toLowerCase()
+        .replace(/^http:\/\//, '')
+        .replace(/\/+$/, ''),
+    )
+    .filter(Boolean);
+  const serviceName =
+    /^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/i.test(origin.hostname) &&
+    origin.hostname !== 'localhost';
+  const internalHttp =
+    origin.protocol === 'http:' && (serviceName || allowlist.includes(origin.host));
+  if (
+    origin.username ||
+    origin.password ||
+    origin.search ||
+    origin.hash ||
+    !(origin.protocol === 'https:' || internalHttp)
+  )
+    throw new Error(
+      'Readiness requires a credential-free HTTPS CMS origin, a single-label internal Docker service name, or an exact APEX_CMS_HTTP_ORIGINS entry',
+    );
+  if (origin.protocol !== 'https:')
+    console.log(
+      `NOTE internal HTTP CMS origin accepted (${origin.host}); the deployment must set the same policy or the theme will fail closed`,
+    );
+  if (!process.env.APEX_READY_TOKEN && !process.env.ESHOBE_REVALIDATE_SECRET)
+    console.log('NOTE no APEX_READY_TOKEN/ESHOBE_REVALIDATE_SECRET: /api/ready stays closed');
   const get = async (path) => {
     const response = await fetch(new URL(path, origin), {
       headers: { Authorization: `Bearer ${key}` },

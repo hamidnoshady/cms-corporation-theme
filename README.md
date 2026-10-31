@@ -31,6 +31,17 @@ without credentials **fails closed**, unless `APEX_DEMO_MODE=true` is explicitly
 set. Partial CMS configuration never falls back to Biza Miz content. Demo and
 Eshobe preview origins are noindex.
 
+`ESHOBE_CMS_URL` must be an origin the container can reach directly: HTTPS, or an
+internal plain-HTTP Docker/Coolify service name such as
+`http://eshobe-cms-web:3000` (Eshobe copies its `DEPLOY_CMS_URL` here). Other
+internal names or IP addresses over HTTP need an exact
+`APEX_CMS_HTTP_ORIGINS=host:port` entry; public HTTP origins, credentials,
+query strings, fragments and paths are rejected. `GET /api/health` is local
+liveness only; `GET /api/ready` (bearer `APEX_READY_TOKEN` or
+`ESHOBE_REVALIDATE_SECRET`) performs one bounded CMS `/api/site` read and reports
+the failure class without exposing secrets. See
+[CMS origin, liveness and CMS readiness](docs/OPERATIONS.md#cms-origin-liveness-and-cms-readiness).
+
 ## What is implemented
 
 - Next 16 / React 19 / Tailwind 4 / strict TypeScript; standalone non-root Docker image.
@@ -41,9 +52,12 @@ Eshobe preview origins are noindex.
 - Typed renderers for the business page-builder blocks: content, media, CTA,
   features, pricing, testimonials, FAQ, contact, forms, galleries, team, logos and
   post archives. Unknown/unavailable blocks are omitted, never fabricated.
-- Authenticated server-only CMS access, bounded stale descriptor cache, published
-  content checks, ID-based bindings, signed revalidation, local health, media-only
-  proxy and host isolation. Native CMS editor handoff with membership verification.
+- Authenticated server-only CMS access with a CMS-specific origin policy (internal
+  plain-HTTP service names allowed, public HTTP/credentials/fragments/paths
+  rejected), typed and deduplicated failure classes, bounded stale descriptor
+  cache, published content checks, ID-based bindings, signed revalidation, local
+  liveness plus authenticated CMS readiness, media-only proxy and host isolation.
+  Native CMS editor handoff with membership verification.
 - Actual Biza Miz website-lead adapter with consent, Persian phone normalization,
   server validation, bounded bodies, signed timed challenges, honeypot, rate
   limits and upstream idempotency. Unconfigured forms cannot claim success.
@@ -65,6 +79,7 @@ pnpm test:e2e           # real Chromium; starts/stops isolated production test s
 pnpm test:a11y          # both locales/themes, all priority pages
 pnpm test:visual        # compare committed screenshots (do not update blindly)
 pnpm smoke             # read-only probe of SMOKE_ORIGIN, default localhost:3000
+                       # SMOKE_READY_TOKEN=… also asserts CMS readiness
 node scripts/readiness.mjs  # read-only live launch gate using operator environment
 ```
 

@@ -81,7 +81,10 @@ If a PR cannot pass the checklist below, it is not ready:
   menu, form state). Avoid client components for static presentation.
 - **Data:**
   - In CMS mode (`ESHOBE_CMS_URL` + `ESHOBE_API_KEY` present), `src/lib/cms/client.ts`
-    fetches with bearer auth from the CMS.
+    fetches with bearer auth from the CMS through the CMS-specific origin policy in
+    `src/lib/cms/origin.ts` (HTTPS, or a single-label internal service name over
+    HTTP, or an exact `APEX_CMS_HTTP_ORIGINS` entry). Never relax the shared
+    `serverUrl()` in `src/lib/security/http.ts` to make a CMS origin work.
   - In local dev without credentials, `src/lib/cms/source.ts` falls back to a
     small static demo snapshot in `src/lib/demo/content.ts` so pages render.
   - Never accept `?site=`, `?tenant=`, or a body `siteId` as tenant identity.
@@ -91,6 +94,11 @@ If a PR cannot pass the checklist below, it is not ready:
     are server-only. Never prefix them with `NEXT_PUBLIC_`.
   - `POST /api/revalidate` must verify HMAC-SHA256 over raw body with timing-safe
     equal (see `src/app/api/revalidate/route.ts`).
+  - `/api/health` is local liveness only and stays the manifest
+    `build.healthCheckPath`; CMS readiness belongs to the authenticated
+    `/api/ready` probe. Failure classes are logged once per class/window through
+    `src/lib/cms/diagnostics.ts` — never log the bearer key, env values, headers
+    or upstream bodies.
   - When `proxiesApi: true`, only proxy the whitelisted CMS-owned paths (see
     `src/lib/cms/proxy.ts`); never forward visitor cookies or arbitrary
     authorization headers to the CMS.
@@ -129,8 +137,9 @@ with `TODO(content): …` so the CMS team knows what to bind.
 
 ## 5. Commits & branches
 
-- Work on the session branch `arena/fb490ade-cms-corporation-theme`. Push only
-  to that branch. Never force-push to `main`.
+- Work on the session branch named in the task
+  (`arena/<session-id>-cms-corporation-theme`). Push only to that branch. Never
+  force-push to `main`.
 - Write commits in the Conventional-ish style used across the Eshobe org:
   `feat(nav): mobile sheet with escape-to-close`, `fix(rtl): icon flip in
   secondary button`, `docs(design): add dark token table`, `chore(deps): …`.
