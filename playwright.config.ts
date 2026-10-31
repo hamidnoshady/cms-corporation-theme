@@ -29,6 +29,16 @@ export default defineConfig({
   projects: [
     { name: 'demo', testMatch: /marketing\.spec\.ts/, use: { baseURL: 'http://127.0.0.1:3200' } },
     { name: 'cms', testMatch: /cms\.spec\.ts/, use: { baseURL: 'http://127.0.0.1:3201' } },
+    {
+      name: 'deployment',
+      testMatch: /deployment\.spec\.ts/,
+      use: { baseURL: 'http://127.0.0.1:3202' },
+    },
+    {
+      name: 'failsafe',
+      testMatch: /failsafe\.spec\.ts/,
+      use: { baseURL: 'http://127.0.0.1:3203' },
+    },
   ],
   webServer: [
     {
@@ -36,6 +46,14 @@ export default defineConfig({
       url: 'http://127.0.0.1:3300/__health',
       reuseExistingServer: false,
       timeout: 60_000,
+    },
+    {
+      // Dedicated instance for the internal-origin deployment project.
+      command: 'pnpm exec tsx tests/fixtures/cms-server.ts',
+      url: 'http://127.0.0.1:3301/__health',
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: { FIXTURE_PORT: '3301' },
     },
     {
       command: 'pnpm start --hostname 0.0.0.0 --port 3200',
@@ -46,6 +64,39 @@ export default defineConfig({
         APEX_DEMO_MODE: 'true',
         ESHOBE_PUBLIC_ORIGIN: 'http://127.0.0.1:3200',
         NEXT_PUBLIC_SITE_URL: 'http://127.0.0.1:3200',
+      },
+    },
+    {
+      // Production-like: an internal plain-HTTP CMS origin explicitly allowlisted
+      // by the operator, with the local `APEX_ALLOW_LOCAL_UPSTREAM` hatch off.
+      command: 'pnpm start --hostname 0.0.0.0 --port 3202',
+      url: 'http://127.0.0.1:3202/api/health',
+      reuseExistingServer: false,
+      env: {
+        ...isolatedEnv,
+        ESHOBE_CMS_URL: 'http://127.0.0.1:3301',
+        APEX_CMS_HTTP_ORIGINS: '127.0.0.1:3301',
+        ESHOBE_API_KEY: 'fixture-site-key',
+        ESHOBE_SITE_ID: 'fixture-site-a',
+        ESHOBE_SITE_DOMAIN: 'fixture.example.test',
+        ESHOBE_PUBLIC_ORIGIN: 'http://127.0.0.1:3202',
+        ESHOBE_REVALIDATE_SECRET: 'fixture-revalidate-secret',
+        ESHOBE_PREVIEW_SECRET: 'fixture-preview-secret',
+      },
+    },
+    {
+      // Misconfigured deployment: a public plain-HTTP CMS origin must fail closed.
+      command: 'pnpm start --hostname 0.0.0.0 --port 3203',
+      url: 'http://127.0.0.1:3203/api/health',
+      reuseExistingServer: false,
+      env: {
+        ...isolatedEnv,
+        ESHOBE_CMS_URL: 'http://cms.public.example.test',
+        ESHOBE_API_KEY: 'fixture-site-key',
+        ESHOBE_SITE_ID: 'fixture-site-a',
+        ESHOBE_PUBLIC_ORIGIN: 'http://127.0.0.1:3203',
+        ESHOBE_REVALIDATE_SECRET: 'fixture-revalidate-secret',
+        APEX_NOINDEX: 'true',
       },
     },
     {

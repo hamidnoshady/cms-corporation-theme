@@ -16,8 +16,11 @@ let state = {
 const requests: { path: string; authorization?: string; cookie?: string; method?: string }[] = [];
 const leads = new Map<string, unknown>();
 const events: unknown[] = [];
+// One instance per contract surface: the deployment suite runs its own port so a
+// Next data cache written by another local server cannot mask a real CMS read.
+const PORT = Number(process.env.FIXTURE_PORT ?? 3300);
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url!, 'http://127.0.0.1:3300');
+  const url = new URL(req.url!, `http://127.0.0.1:${PORT}`);
   const json = (body: unknown, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(body));
@@ -138,4 +141,6 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/api/posts') return json({ docs: [], hasNextPage: false });
   return json({ error: 'not_found' }, 404);
 });
-server.listen(3300, '127.0.0.1', () => console.log('Local CMS/CRM contract fixture ready'));
+server.listen(PORT, '127.0.0.1', () =>
+  console.log(`Local CMS/CRM contract fixture ready on 127.0.0.1:${PORT}`),
+);

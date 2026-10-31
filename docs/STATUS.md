@@ -13,6 +13,24 @@ Do not close the issue solely because these tests pass.
 | 3 — Commercial | Existing Biza Miz lead-intake adapter, validation/consent/attribution/challenges/retries/idempotency; approved-catalogue renderer; owner-destination links; opt-in event transport and signed conversion adapter | Real CRM receipt; authorized public pricing export; owner URL; metrics collector/emitter verification |
 | 4 — Hardening | Unit/contract/browser/axe/visual/performance checks; SEO; draft/host isolation; standalone build and Docker/CI/GHCR registration tooling; launch and rollback runbook | CI container result for the release commit; Eshobe preview; same-digest promotion, production smoke and rollback; real-device/field performance evidence |
 
+## Deployment hardening for issue #6 — 2026-10-31
+
+The deployed theme rejected the CMS's operator-provisioned internal plain-HTTP
+origin (`http://eshobe-cms-web:3000`), threw a bare `CmsError(503)` before any
+request and rendered the global fallback. The theme-side fix and its local
+evidence:
+
+| Check | Result |
+| --- | --- |
+| `pnpm typecheck`, `pnpm lint`, `pnpm format:check` | PASS |
+| `pnpm test` | PASS — **34 unit tests** (13 new: origin policy, failure classes, dedupe, readiness) |
+| `pnpm build` | PASS — `/api/ready` and `/api/health` both dynamic routes |
+| `pnpm test:e2e` | PASS — **37 tests**, including `deployment` (internal HTTP origin allowlisted as `127.0.0.1:3301`, no `APEX_ALLOW_LOCAL_UPSTREAM`) and `failsafe` (public HTTP origin rejected, localized fallback, liveness 200) |
+| Internal-origin topology | PASS — both locales render published CMS content through the plain-HTTP origin; bearer key and no cookies on every page read |
+| Readiness / liveness separation | PASS — `/api/ready` 200 with `checks` all `ok`, 401 unauthenticated, 503 with `cms: unavailable` during a CMS outage while `/api/health` stays 200 `mode: cms` |
+| Fail-closed misconfiguration | PASS — untrusted public HTTP origin: liveness 200 `mode: invalid`, readiness 503 `config: invalid` with an `APEX_CMS_HTTP_ORIGINS` hint, pages 500 with the bilingual fallback and a digest reference, never demo content |
+| Docker container smoke, Eshobe preview/promotion, live `bizamiz.eshobe.com` | **Not executed here** — requires the operator environment. The production incident is not verified as resolved until the theme is redeployed with the fixed artifact and `/api/ready` returns 200 on the deployed domain. |
+
 ## Executed local verification
 
 Environment: Node 22, pnpm 9.15.9, Next **16.4.3**, React 19.2.6,

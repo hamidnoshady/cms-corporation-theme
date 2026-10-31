@@ -24,6 +24,93 @@ through Eshobe's deploy target. If the operator deliberately makes the package
 public, update visibility in both the manifest and target configuration. Do not
 assume GitHub source visibility makes GHCR public.
 
+## CMS origin, liveness and CMS readiness
+
+The theme renders server-side, so the container needs a CMS origin it can actually
+reach. Eshobe copies its `DEPLOY_CMS_URL` into `ESHOBE_CMS_URL` at deploy time and
+the value it recommends is a **proxy-free internal origin** on the shared Docker
+network, for example `http://eshobe-cms-web:3000`. Falling back to a public origin
+with Host/SNI routing can loop back through the proxy and answer 503.
+
+Accepted shapes for `ESHOBE_CMS_URL` (server-only, never a `NEXT_PUBLIC_*`):
+
+| Value | Accepted | Why |
+|---|---|---|
+| `https://cms.example.com` | yes | TLS origin, any path/credentials/fragment rejected. |
+| `http://eshobe-cms-web:3000` | yes | single-label Docker/Compose service name; it cannot be a public DNS origin. |
+| `http://internal.example:8080` | only with `APEX_CMS_HTTP_ORIGINS=internal.example:8080` | multi-label internal name or internal IP, exact `host[:port]`, no wildcards. |
+| `http://cms.example.com` | **no** | public plain HTTP stays rejected; use HTTPS. |
+| `http://127.0.0.1:3300` | only with that exact allowlist entry, or locally with `APEX_ALLOW_LOCAL_UPSTREAM=true` | loopback is a test escape hatch, never a production default. |
+| URL with credentials, `?query`, `#fragment` or a path | **no** | the site key must never travel in a URL, and the theme appends `/api/...` itself. |
+
+The policy lives in `src/lib/cms/origin.ts` and applies to every server-only CMS
+call (`cmsGet`, `cmsMedia`, the native preview handoff). It is separate from the
+stricter shared `serverUrl()` used by the lead, analytics and pricing
+integrations, and it never relaxes them. Requests always use the approved origin,
+send the site-scoped bearer key only there, refuse redirects, and keep bounded
+timeouts (4 s content, 10 s media, 2.5 s readiness).
+
+A missing, partial or rejected configuration **fails closed**: the theme throws a
+typed error and renders its localized fallback. It never falls back to demo
+content unless `APEX_DEMO_MODE=true` is explicitly set on a non-production box.
+Every failure is logged once per class and window as one sanitized line:
+
+```text
+[cms] {"event":"cms_failure","failure":"upstream_unavailable","status":503,
+       "upstreamStatus":503,"origin":"http://eshobe-cms-web:3000",
+       "path":"/api/site","correlationId":"…","hint":"…"}
+```
+
+`failure` distinguishes `config_missing`/`config_invalid`/`key_missing` (rejected
+before any request), `dns`/`network`/`timeout`/`redirect`, `auth` (upstream
+401/403), `rate_limited`, `upstream_unavailable` (upstream 502/503/504),
+`invalid_response`, `contract_mismatch` and `site_mismatch`. Lines never contain
+the bearer key, an env value, request headers or an upstream body. Identical
+failures are folded for 60 s (`suppressed`) so an outage cannot flood the log, and
+the `correlationId` also appears on the thrown error so a Next error digest can be
+matched to the diagnostic line.
+
+### Liveness vs readiness
+
+| Endpoint | Scope | Auth | Behaviour |
+|---|---|---|---|
+| `GET /api/health` | local process only | none | Always `200` with `ok: true` and `mode: cms \| demo \| unconfigured \| invalid`. Never calls the CMS, so a CMS blip cannot mark every container unhealthy. This is the manifest `build.healthCheckPath` that Coolify probes from inside the container. |
+| `GET /api/ready` | real CMS `GET /api/site` | `Authorization: Bearer` equal to `APEX_READY_TOKEN` or `ESHOBE_REVALIDATE_SECRET` (values shorter than 16 characters are ignored) | `200` only when the descriptor answers with `contractVersion: 1`, the matching site id and an active site; otherwise `503` with a sanitized `checks` object, hints, latency and correlation id. Coalesced for 2 s; no key, upstream header or body in the response. |
+
+`/api/ready` stays **out** of `healthCheckPath` on purpose. The upstream Theme API
+requires the container health check to stay cheap and local: pointing it at a
+remote probe marks every container unhealthy during a legitimate CMS restart, and
+the promotion probe treats any non-2xx as a failed deploy. Promotion therefore
+gates on two checks: the local liveness path (Coolify) **and** an explicit
+readiness probe by the operator or the CMS, for example
+
+```sh
+SMOKE_ORIGIN=https://<app-host> SMOKE_READY_TOKEN=<token> pnpm smoke
+curl -fsS -H "Authorization: Bearer $ESHOBE_REVALIDATE_SECRET" \
+  https://<app-host>/api/ready | jq '.ok, .checks'
+```
+
+Environment variables are read at container start. Changing `DEPLOY_CMS_URL`,
+`APEX_CMS_HTTP_ORIGINS` or any tenant secret reaches running containers only on a
+**redeploy** (the CMS reports `needsRedeploy` until then), so a config fix is not
+complete until the deployment has been redeployed and `/api/ready` returns 200.
+
+### Diagnosing the "CMS request failed (503)" fallback
+
+1. On the theme container, print `ESHOBE_CMS_URL` (never the key) and confirm the
+   scheme/host matches the table above.
+2. From inside the same container call `GET ${ESHOBE_CMS_URL}/api/site` with the
+   server-only bearer key and record only the status and content type. A TLS or
+   connection error here is a network/proxy dependency; a 401/403 is a key
+   problem; a 200 means the theme configuration is the problem.
+3. Call `/api/ready` with the deployment token and read `checks`:
+   `config` (policy/key), `cms` (`unavailable`, `auth`, `timeout`, `redirect`,
+   `unreachable`, `invalid_response`), `contract`, `site`.
+4. Match the `correlationId` in the response with the `[cms]` log line; the Next
+   error digest next to it is the browser's `Reference:` value.
+5. Fix the origin/allowlist/key, redeploy, and re-run readiness plus the two
+   locales before promoting.
+
 ## Tenant and cache boundaries
 
 - Each Eshobe binding gets its own container and server-only site key. Allowed
@@ -79,8 +166,11 @@ Do not add X-Frame-Options DENY/SAMEORIGIN to this embeddable renderer.
 3. Run `node scripts/readiness.mjs` from a securely configured environment.
    This is read-only and prints gate names/booleans, not credentials/content.
 4. Register the exact built artifact, then deploy it to **Eshobe preview**.
-   Confirm correct preview origin, noindex, the local health check and CMS readiness.
-5. Run `SMOKE_ORIGIN=<preview-origin> pnpm smoke`. Review 360/768/1024/1440 widths,
+   Confirm the preview origin, noindex, the local health check (`/api/health`
+   returns 200) and CMS readiness (`/api/ready` returns 200 with every check
+   `ok`). A green liveness check alone is not readiness.
+5. Run `SMOKE_READY_TOKEN=$ESHOBE_REVALIDATE_SECRET SMOKE_ORIGIN=<preview-origin> pnpm smoke`
+   (or `pnpm smoke` without a token for the public probes only). Review 360/768/1024/1440 widths,
    fa/en, light/dark, keyboard menu/form/FAQ, announcement, system preference.
 6. Edit and publish CMS text without releasing code. Confirm revalidation and
    the published result. Verify an unauthorized/foreign-site draft cannot be read.
@@ -91,7 +181,8 @@ Do not add X-Frame-Options DENY/SAMEORIGIN to this embeddable renderer.
    against actual demo/activation/settlement records. Do not invent conversions.
 9. Record the **currently running production artifact/digest** as rollback target.
    Promote the reviewed **same** preview artifact through Eshobe. Run read-only
-   production smoke and field performance monitoring; retain the prior artifact.
+   production smoke including `/api/ready` and field performance monitoring;
+   retain the prior artifact.
    If this is the first deployment and no prior digest exists, agree and record
    the supported recovery target with the platform operator before promotion;
    do not invent a previous artifact or mark rollback as verified.

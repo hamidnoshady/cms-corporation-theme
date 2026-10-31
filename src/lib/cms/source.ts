@@ -2,7 +2,15 @@ import 'server-only';
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { cmsEnabled, cmsGet, CmsError, demoEnabled, published } from './client';
+import {
+  cmsConfigurationError,
+  cmsEnabled,
+  cmsFailureError,
+  cmsGet,
+  CmsError,
+  demoEnabled,
+  published,
+} from './client';
 import { demoSnapshot } from '../demo/content';
 import { isPreviewRequest } from '../security/preview';
 import { isLocale, SLOT_PATHS } from './urls';
@@ -32,15 +40,15 @@ export function belongsToSite(
 }
 export const getSite = cache(async (): Promise<SiteDescriptor> => {
   if (!cmsEnabled()) {
-    if (!demoEnabled()) throw new CmsError(503);
+    // No credentials: local sample mode only. Anything else fails closed with a
+    // diagnosable configuration error instead of rendering demo content.
+    if (!demoEnabled()) throw cmsConfigurationError();
     return demoSnapshot('fa').site;
   }
   const site = await cmsGet<SiteDescriptor>('/api/site');
-  if (
-    site.contractVersion !== 1 ||
-    (process.env.ESHOBE_SITE_ID && site.id && site.id !== process.env.ESHOBE_SITE_ID)
-  )
-    throw new CmsError(403);
+  if (site.contractVersion !== 1) throw cmsFailureError('contract_mismatch', '/api/site');
+  if (process.env.ESHOBE_SITE_ID && site.id && site.id !== process.env.ESHOBE_SITE_ID)
+    throw cmsFailureError('site_mismatch', '/api/site');
   if (site.status && site.status !== 'active') notFound();
   return site;
 });

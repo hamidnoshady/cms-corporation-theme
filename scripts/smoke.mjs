@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 const base = process.env.SMOKE_ORIGIN ?? 'http://127.0.0.1:3000';
+// CMS readiness is separate from liveness. Probe it only when the operator gives
+// a token; the value is never printed and never sent anywhere else.
+const readyToken = process.env.SMOKE_READY_TOKEN ?? process.env.ESHOBE_REVALIDATE_SECRET;
 for (const path of [
   '/api/health',
   '/',
@@ -28,4 +31,26 @@ for (const path of [
   }
   assert.ok(!/eshobe_live_/.test(text), 'Unexpected secret-shaped value in public response');
   console.log(`PASS ${path}`);
+}
+
+if (readyToken) {
+  const response = await fetch(new URL('/api/ready', base), {
+    headers: { Authorization: `Bearer ${readyToken}` },
+    signal: AbortSignal.timeout(15000),
+    redirect: 'error',
+  });
+  const report = await response.json().catch(() => ({}));
+  assert.equal(
+    response.status,
+    200,
+    `/api/ready: not ready (${JSON.stringify(report.hints ?? [])})`,
+  );
+  assert.equal(report.ok, true, '/api/ready: ok was not true');
+  assert.equal(report.checks?.cms, 'ok', '/api/ready: CMS check was not ok');
+  assert.ok(!JSON.stringify(report).includes(readyToken), '/api/ready leaked its token');
+  console.log(`PASS /api/ready (${report.origin}, ${report.latencyMs} ms)`);
+} else {
+  console.log(
+    'SKIP /api/ready (set SMOKE_READY_TOKEN or ESHOBE_REVALIDATE_SECRET to probe CMS readiness)',
+  );
 }
