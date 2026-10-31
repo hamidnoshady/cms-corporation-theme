@@ -12,6 +12,9 @@ let state = {
   leadFailures: 0,
   malformedLead: false,
   renamed: false,
+  // Redirect and slow-upstream modes for the deployment regression suite.
+  redirectSite: false,
+  delayMs: 0,
 };
 const requests: { path: string; authorization?: string; cookie?: string; method?: string }[] = [];
 const leads = new Map<string, unknown>();
@@ -41,6 +44,12 @@ const server = createServer(async (req, res) => {
     cookie: req.headers.cookie,
     method: req.method,
   });
+  if (state.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.delayMs));
+  if (state.redirectSite && url.pathname === '/api/site') {
+    // A redirect target must never receive the site key: the client refuses to follow.
+    res.writeHead(302, { Location: 'https://evil.example.test/api/site' });
+    return res.end();
+  }
   if (url.pathname === '/api/website/leads') {
     if (req.headers.authorization !== 'Bearer fixture-lead-token')
       return json({ error: 'unauthorized' }, 401);

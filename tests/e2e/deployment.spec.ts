@@ -20,11 +20,16 @@ async function fixture(request: APIRequestContext) {
 }
 
 test.beforeEach(async ({ request }) => {
-  await control(request, { cmsDown: false, title: 'CMS published homepage' });
+  await control(request, {
+    cmsDown: false,
+    title: 'CMS published homepage',
+    redirectSite: false,
+    delayMs: 0,
+  });
 });
 
 test.afterEach(async ({ request }) => {
-  await control(request, { cmsDown: false });
+  await control(request, { cmsDown: false, redirectSite: false, delayMs: 0 });
 });
 
 test('the allowlisted internal HTTP CMS origin serves published content in both locales', async ({
@@ -100,4 +105,42 @@ test('a CMS outage fails readiness and media, but never liveness', async ({ requ
   const health = await request.get('/api/health');
   expect(health.status()).toBe(200);
   expect(await health.json()).toMatchObject({ ok: true, mode: 'cms' });
+});
+
+test('a redirect or a slow CMS is reported as such, never followed and never leaked', async ({
+  request,
+}) => {
+  // A redirect from the approved origin must not be followed: the key would
+  // otherwise travel to an unapproved destination.
+  await control(request, { redirectSite: true });
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get('/api/ready', { headers: auth });
+        if (response.status() === 200) return 'ok';
+        return (await response.json()).checks.cms;
+      },
+      { timeout: 20_000, intervals: [500, 2_500, 2_500, 2_500] },
+    )
+    .toBe('redirect');
+  await control(request, { redirectSite: false });
+
+  // A CMS that exceeds the bounded readiness timeout reports `timeout`, and
+  // liveness stays local throughout.
+  await control(request, { delayMs: 4_000 });
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get('/api/ready', { headers: auth });
+        if (response.status() === 200) return 'ok';
+        return (await response.json()).checks.cms;
+      },
+      { timeout: 25_000, intervals: [500, 2_500, 2_500, 2_500, 2_500] },
+    )
+    .toBe('timeout');
+  const report = await (await request.get('/api/ready', { headers: auth })).json();
+  expect(report.checks.config).toBe('ok');
+  expect(JSON.stringify(report)).not.toContain('fixture-site-key');
+  expect((await request.get('/api/health')).status()).toBe(200);
+  await control(request, { delayMs: 0 });
 });

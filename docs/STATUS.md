@@ -25,9 +25,9 @@ evidence:
 | `pnpm typecheck`, `pnpm lint`, `pnpm format:check` | PASS |
 | `pnpm test` | PASS — **34 unit tests** (13 new: origin policy, failure classes, dedupe, readiness) |
 | `pnpm build` | PASS — `/api/ready` and `/api/health` both dynamic routes |
-| `pnpm test:e2e` | PASS — **37 tests**, including `deployment` (internal HTTP origin allowlisted as `127.0.0.1:3301`, no `APEX_ALLOW_LOCAL_UPSTREAM`) and `failsafe` (public HTTP origin rejected, localized fallback, liveness 200) |
+| `pnpm test:e2e` | PASS — **38 tests**, including `deployment` (internal HTTP origin allowlisted as `127.0.0.1:3301`, no `APEX_ALLOW_LOCAL_UPSTREAM`; redirect not followed, bounded timeout, outage) and `failsafe` (public HTTP origin rejected, localized fallback, liveness 200) |
 | Internal-origin topology | PASS — both locales render published CMS content through the plain-HTTP origin; bearer key and no cookies on every page read |
-| Readiness / liveness separation | PASS — `/api/ready` 200 with `checks` all `ok`, 401 unauthenticated, 503 with `cms: unavailable` during a CMS outage while `/api/health` stays 200 `mode: cms` |
+| Readiness / liveness separation | PASS — `/api/ready` 200 with `checks` all `ok`, 401 unauthenticated, 503 with `cms: unavailable` during a CMS outage, `cms: redirect` for an upstream 302 (never followed) and `cms: timeout` past the 2.5 s bound, while `/api/health` stays 200 `mode: cms` |
 | Fail-closed misconfiguration | PASS — untrusted public HTTP origin: liveness 200 `mode: invalid`, readiness 503 `config: invalid` with an `APEX_CMS_HTTP_ORIGINS` hint, pages 500 with the bilingual fallback and a digest reference, never demo content |
 | Docker container smoke, Eshobe preview/promotion, live `bizamiz.eshobe.com` | **Not executed here** — requires the operator environment. The production incident is not verified as resolved until the theme is redeployed with the fixed artifact and `/api/ready` returns 200 on the deployed domain. |
 
