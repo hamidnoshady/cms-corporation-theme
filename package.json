@@ -5,7 +5,9 @@
   "description": "Apex \u2014 Vercel-inspired corporate/SaaS marketing theme for Eshobe CMS (Biza Miz first tenant).",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/prepare-standalone.mjs",
+    "build": "pnpm preflight:cms && next build && node scripts/prepare-standalone.mjs",
+    "preflight:cms": "tsx --conditions=react-server scripts/cms-preflight.ts",
+    "readiness": "tsx --conditions=react-server scripts/readiness.ts",
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",

@@ -8,6 +8,8 @@ permissions:
 jobs:
   verify:
     uses: ./.github/workflows/checks.yml
+    secrets:
+      ESHOBE_CMS_URL: ${{ secrets.ESHOBE_CMS_URL }}
   publish:
     needs: verify
     runs-on: ubuntu-24.04
