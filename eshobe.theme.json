@@ -244,11 +244,13 @@
           "labelFa": "سیستم",
           "labelEn": "System"
         }
-      ]
+      ],
+      "group": "design"
     },
     "showFooterLocaleSwitcher": {
       "type": "boolean",
       "default": true,
+      "group": "design",
       "labelFa": "تغییر زبان در پاورقی",
       "labelEn": "Footer locale switcher"
     }
