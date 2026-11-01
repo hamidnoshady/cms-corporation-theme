@@ -119,6 +119,21 @@ Environment variables are read at container start. Changing `DEPLOY_CMS_URL`,
 **redeploy** (the CMS reports `needsRedeploy` until then), so a config fix is not
 complete until the deployment has been redeployed and `/api/ready` returns 200.
 
+### Catching the CMS origin before a request does
+
+The same resolver the request path uses is available as a build/publish gate, so a
+rejected `ESHOBE_CMS_URL` never reaches a running container:
+
+```sh
+pnpm preflight:cms              # image build: skipped when no CMS config is present
+pnpm preflight:cms --require    # publish/operator gate: also fails when it is unset
+```
+
+It prints `PASS`/`SKIP`/`BLOCKED` with the sanitized origin and the rule code,
+performs no network call and never prints the site key. `pnpm build` runs the
+non-strict form, and `checks.yml` runs it with the repository's `ESHOBE_CMS_URL`
+secret before an image is published.
+
 ### Diagnosing the "CMS request failed (503)" fallback
 
 1. Call `GET /api/health`. `mode: "invalid"` plus `configIssue` names the rule that
@@ -207,8 +222,10 @@ Do not add X-Frame-Options DENY/SAMEORIGIN to this embeddable renderer.
 1. Sync the manifest; configure the Eshobe package, GHCR target and runtime secrets.
 2. Publish/bind reviewed content in both languages (including a real privacy
    policy) and current approved product captures. Verify all original claims.
-3. Run `node scripts/readiness.mjs` from a securely configured environment.
-   This is read-only and prints gate names/booleans, not credentials/content.
+3. Run `pnpm readiness` from a securely configured environment. This is read-only
+   and prints gate names/booleans, not credentials/content. It validates the CMS
+   origin with the same resolver as the container (not a second copy of the rule
+   table), so it cannot approve an origin the theme would refuse.
 4. Register the exact built artifact, then deploy it to **Eshobe preview**.
    Confirm the preview origin, noindex, the local health check (`/api/health`
    returns 200) and CMS readiness (`/api/ready` returns 200 with every check

@@ -88,7 +88,7 @@ Tailwind 4.3.3, bundled Chromium 153. No real integration credentials were used.
 | Lead/analytics contracts | PASS — synthetic CRM receipt, retry/replay creates one fixture record, malformed success preserves inputs, consent, server-only nonduplicate lead event, signed settlement callback and replay protection |
 | Eshobe manifest parser | PASS — accepted as `registry_image` by the upstream parser at `cfe663a50e2e6b1ec21128e4ab1ae3db19bbfa27` (scratch copy with import-path adaptation only) |
 | Local standalone preview smoke | PASS — health, both locale homepages, four priority routes, robots and sitemap (9 probes) |
-| `node scripts/readiness.mjs` | **BLOCKED as expected** — no operator CMS/CRM/pricing/public-origin/signing configuration in this sandbox |
+| `pnpm readiness` | **BLOCKED as expected** — no operator CMS/CRM/pricing/public-origin/signing configuration in this sandbox |
 | Docker execution in this sandbox | Not run — Docker CLI/daemon unavailable. CI builds the image and runs container smoke; check the release commit's GitHub checks. |
 
 The production dependency audit does not cover container OS packages or guarantee

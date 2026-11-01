@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+    secrets:
+      ESHOBE_CMS_URL:
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -23,6 +26,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Preflight the CMS origin policy
+        env:
+          ESHOBE_CMS_URL: ${{ secrets.ESHOBE_CMS_URL }}
+          APEX_CMS_HTTP_ORIGINS: ${{ vars.APEX_CMS_HTTP_ORIGINS }}
+        run: pnpm preflight:cms
       - run: pnpm audit:runtime
       - run: pnpm format:check
       - run: pnpm verify

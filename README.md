@@ -85,12 +85,14 @@ and `GET /api/health` reports `configIssue` — a code only, never a host or a k
 pnpm audit:runtime      # current production dependency advisories
 pnpm format:check       # source/test/workflow formatting
 pnpm verify             # type generation, strict typecheck, lint, unit tests, production build
+pnpm preflight:cms      # reject an ESHOBE_CMS_URL the runtime origin policy would refuse
+                        # (pnpm build runs this first; --require also fails when unset)
 pnpm test:e2e           # real Chromium; starts/stops isolated production test servers
 pnpm test:a11y          # both locales/themes, all priority pages
 pnpm test:visual        # compare committed screenshots (do not update blindly)
 pnpm smoke             # read-only probe of SMOKE_ORIGIN, default localhost:3000
                        # SMOKE_READY_TOKEN=… also asserts CMS readiness
-node scripts/readiness.mjs  # read-only live launch gate using operator environment
+pnpm readiness          # read-only live launch gate using operator environment
 ```
 
 Chromium and its small Linux support-library bundle come from npm because the
