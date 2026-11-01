@@ -155,8 +155,15 @@ complete until the deployment has been redeployed and `/api/ready` returns 200.
   operator `APEX_ALLOWED_HOSTS` entries; an unknown host cannot borrow the key.
 - API credentials, authorization/cookies from visitors, arbitrary tenant query
   strings and caller-chosen proxy targets are never forwarded.
-- The public proxy exposes the sanitized descriptor and media files only.
-  Content is rendered server-side with publication/translation/site checks.
+- The public proxy exposes the sanitized descriptor, media bytes and the
+  CMS-owned **published** reads a `direct` deployment needs (`pages`, `posts`,
+  `products`, `media`, `search`, `forms`, `globals/header|footer`,
+  `payments/methods`). It is read-only, forwards no cookies, drops
+  `draft`/`overrideAccess`/`site` query keys and adds
+  `where[_status][equals]=published` to draft-enabled collections. Theme-owned
+  endpoints (`/api/leads`, `/api/events`, `/api/conversions`, `/api/revalidate`,
+  `/api/ready`, `/api/health`) stay local. Content is rendered server-side with
+  publication/translation/site checks.
 - Descriptor cache is bounded, keyed by CMS origin + credential hash, coalesced,
   TTL 30 seconds and maximum stale age 5 minutes. A warm descriptor answers
   immediately while refresh happens; after the stale window a failure is visible.

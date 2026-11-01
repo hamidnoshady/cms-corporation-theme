@@ -38,7 +38,11 @@ test('real CMS bindings, publishing edits, caching, safe public descriptor and h
   const descriptor = await (await request.get('/api/site?site=other&draft=true')).json();
   expect(descriptor.id).toBeUndefined();
   expect(JSON.stringify(descriptor)).not.toContain('fixture-site-key');
-  expect((await request.get('/api/pages?draft=true')).status()).toBe(404);
+  // `proxiesApi: true`: CMS-owned reads answer on this origin, but as published
+  // reads — a visitor's `draft`/`site` selectors never reach the keyed upstream.
+  const proxied = await request.get('/api/pages?draft=true&where[site][equals]=other');
+  expect(proxied.status()).toBe(200);
+  expect(JSON.stringify(await proxied.json())).not.toContain('fixture-site-key');
   expect(
     (await request.get('/api/site', { headers: { Host: 'unknown.example.test' } })).status(),
   ).toBe(404);
@@ -55,11 +59,15 @@ test('real CMS bindings, publishing edits, caching, safe public descriptor and h
     authorization?: string;
     cookie?: string;
   }[];
+  const pageReads = records.filter((r) => r.path.startsWith('/api/pages'));
+  expect(pageReads.every((r) => r.authorization === 'Bearer fixture-site-key' && !r.cookie)).toBe(
+    true,
+  );
+  // Every read — renderer or proxy — is published-only and tenant-free upstream.
   expect(
-    records
-      .filter((r) => r.path.startsWith('/api/pages'))
-      .every((r) => r.authorization === 'Bearer fixture-site-key' && !r.cookie),
+    pageReads.every((r) => !r.path.includes('draft=true') && !r.path.includes('site%5D')),
   ).toBe(true);
+  expect(pageReads.some((r) => r.path.includes('_status'))).toBe(true);
 });
 test('draft, missing locale and explicit foreign-site document never render publicly', async ({
   page,

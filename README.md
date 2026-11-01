@@ -63,8 +63,11 @@ and `GET /api/health` reports `configIssue` — a code only, never a host or a k
   plain-HTTP service names allowed, public HTTP/credentials/fragments/paths
   rejected), typed and deduplicated failure classes, bounded stale descriptor
   cache, published content checks, ID-based bindings, signed revalidation, local
-  liveness plus authenticated CMS readiness, media-only proxy and host isolation.
-  Native CMS editor handoff with membership verification.
+  liveness plus authenticated CMS readiness, host isolation, and the `proxiesApi`
+  surface in `direct` mode: published-only CMS reads (`pages`, `posts`, `products`,
+  `media`, `search`, `forms`, `globals/header|footer`, `payments/methods`) and media
+  bytes, with `draft`/tenant selectors stripped. Native CMS editor handoff with
+  membership verification.
 - Actual Biza Miz website-lead adapter with consent, Persian phone normalization,
   server validation, bounded bodies, signed timed challenges, honeypot, rate
   limits and upstream idempotency. Unconfigured forms cannot claim success.

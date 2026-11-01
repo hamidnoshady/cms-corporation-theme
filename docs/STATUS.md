@@ -4,6 +4,25 @@ Recorded **2026-10-25** for [issue #1](https://github.com/hamidnoshady/cms-corpo
 This is a repository implementation and local verification record, **not a production launch certificate**.
 Do not close the issue solely because these tests pass.
 
+## Theme API conformance audit — 2026-11-01
+
+The theme was audited line by line against `eshobe-cms/docs/THEME_API.md`
+(contract v1, docs at `0b7eb5a`) and the CMS's own manifest parser. Full matrix,
+deviations and remaining gaps: [`CONFORMANCE.md`](./CONFORMANCE.md).
+
+| Check | Result |
+| --- | --- |
+| Manifest parsed by the CMS parser (`src/lib/deploy/manifest.ts`) | PASS — `ok: true`, `registry_image`, `dockerfile`, `port 3000`, `/api/health` |
+| Vendored `@eshobe/site-runtime` vs `packages/site-runtime/dist` | PASS — byte-identical (`index`, `format`, `money`, `theme`, `blocks`, `slug`, `locale`, `digits`) |
+| `proxiesApi: true` surface in `direct` mode | **Fixed** — published-only CMS reads and media bytes are now proxied (`src/lib/cms/proxy.ts`); `draft`/`overrideAccess`/`site` selectors are stripped and `_status=published` is forced |
+| Runtime `settings` grouping (spec field added 2026-10-27) | **Fixed** — colour mode and footer locale switcher declare `group: "design"` |
+| `docs/THEME_API.md` vs upstream | **Re-synced** |
+| `pnpm typecheck` / `lint` / `format:check` | PASS |
+| `pnpm test` | PASS — **45 unit tests** (8 new proxy-contract tests) |
+| `pnpm build` | PASS |
+| `pnpm test:e2e` | PASS — **38 tests**, CMS proxy assertions updated |
+| Open follow-ups | `/posts` index and `/search` route, `redirects` collection, `mediaBlock.size/aspect` and `sizes` usage, holding page for suspended sites |
+
 ## Four-stage delivery
 
 | Stage | Implemented in this repository | Remaining acceptance outside the sandbox |
